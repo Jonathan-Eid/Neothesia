@@ -78,6 +78,35 @@ impl TempoTrack {
         id.and_then(|id| self.events.get(id))
     }
 
+    pub fn tempo_event_for_timestamp(&self, timestamp: Duration) -> Option<&TempoEvent> {
+        let res = self
+            .events
+            .binary_search_by_key(&timestamp, |e| e.timestamp);
+
+        let id = match res {
+            Ok(id) => Some(id),
+            Err(id) => id.checked_sub(1),
+        };
+
+        id.and_then(|id| self.events.get(id))
+    }
+
+    /// Inverse of [`Self::pulses_to_duration`].
+    pub fn duration_to_pulses(&self, timestamp: Duration) -> u64 {
+        let tempo_event = self.tempo_event_for_timestamp(timestamp);
+
+        let (start, previous_absolute_pulses, tempo) = if let Some(event) = tempo_event {
+            (event.timestamp, event.absolute_pulses, event.tempo)
+        } else {
+            (Duration::ZERO, 0, 500_000)
+        };
+
+        let delta = timestamp.saturating_sub(start).as_micros() as f64;
+        let pulses = delta / tempo as f64 * self.pulses_per_quarter_note as f64;
+
+        previous_absolute_pulses + pulses.round() as u64
+    }
+
     pub fn pulses_to_duration(&self, event_pulses: u64) -> Duration {
         let tempo_event = self.tempo_event_for_pulses(event_pulses);
 

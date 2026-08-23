@@ -10,6 +10,7 @@ members = [
   "neothesia-image",
   "midi-file",
   "midi-io",
+  "music-theory",
   "nuon",
 ]
 
@@ -25,6 +26,7 @@ neothesia-core = { path = "./neothesia-core" }
 neothesia-image = { path = "./neothesia-image" }
 midi-file = { path = "./midi-file" }
 midi-io = { path = "./midi-io" }
+music-theory = { path = "./music-theory" }
 piano-layout = { path = "./piano-layout" }
 ffmpeg-encoder = { path = "./ffmpeg-encoder" }
 nuon = { path = "./nuon" }
