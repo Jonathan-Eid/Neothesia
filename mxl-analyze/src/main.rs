@@ -3,7 +3,6 @@ mod cli;
 mod key_estimate;
 mod model;
 mod role;
-mod schema;
 mod span;
 mod window;
 
@@ -14,14 +13,15 @@ use music_theory::{Chord, Key, note_name_with_octave};
 
 use backend::{AnalysisBackend, ClaudeCliBackend, SpanNoteText, SpanRequest, Validated};
 use model::{NoteId, Score};
-use schema::{
+use song_analysis::{
     AnalysisFile, KeyHint, LlmUsage, NoteAnalysis, NoteRole, Resolution, SpanAnalysis, SpanOutcome,
 };
+use std::collections::HashSet;
 use window::{ExpandCap, ExpandOutcome};
 
 fn key_hint(key: &Key) -> KeyHint {
     KeyHint {
-        tonic: music_theory::note_name(key.tonic, key.prefers_flats()),
+        tonic: key.tonic,
         minor: key.minor,
         fifths: key.fifths,
     }
@@ -63,6 +63,8 @@ fn main() {
 
     let mut resolved: Vec<Option<Resolved>> = Vec::with_capacity(score.len());
     let mut unresolved: Vec<Unresolved> = Vec::new();
+    let mut pedal_tones: HashSet<usize> = HashSet::new();
+    let mut pedal_window_of: HashMap<usize, Vec<NoteId>> = HashMap::new();
 
     for note in score.notes.iter() {
         let id = note.id;
@@ -83,6 +85,10 @@ fn main() {
                 window_note_ids: result.window_note_ids,
                 resolution: Resolution::Expanded,
             }));
+        } else if window::is_pedal_tone(&score, &result.window_note_ids) {
+            resolved.push(None);
+            pedal_tones.insert(id.0);
+            pedal_window_of.insert(id.0, result.window_note_ids);
         } else {
             resolved.push(None);
             unresolved.push(Unresolved {
@@ -245,6 +251,21 @@ fn main() {
                     role::classify_role(&score, id, &r.chord),
                     Some(r.chord.confidence),
                     r.window_note_ids.iter().map(|w| w.0).collect(),
+                ),
+                None if pedal_tones.contains(&id.0) => (
+                    Resolution::PedalTone,
+                    None,
+                    None,
+                    None,
+                    NoteRole::Unclassified,
+                    None,
+                    pedal_window_of
+                        .get(&id.0)
+                        .cloned()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|w| w.0)
+                        .collect(),
                 ),
                 None => (
                     Resolution::Unresolved,

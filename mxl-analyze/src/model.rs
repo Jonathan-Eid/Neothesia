@@ -26,12 +26,26 @@ pub struct Score {
     pub signature_track: SignatureTrack,
 }
 
+/// General MIDI program numbers 0-7: Acoustic Grand through Clavi - the
+/// "piano family". A track with no program change at all defaults to
+/// program 0 by convention, so it counts as piano too.
+fn is_piano_track(track: &midi_file::MidiTrack) -> bool {
+    match track.programs.last() {
+        Some(program) => program.program <= 7,
+        None => true,
+    }
+}
+
 impl Score {
+    /// Only the piano tracks - this is analysis for a piano player, so a
+    /// vocal or guitar line sharing the file shouldn't affect the harmony,
+    /// let alone survive filtering into "no chord fits, ask the LLM" spans
+    /// of its own.
     pub fn from_midi_file(file: &MidiFile) -> Self {
         let mut notes: Vec<AnalyzedNote> = file
             .tracks
             .iter()
-            .filter(|track| track.has_other_than_drums)
+            .filter(|track| track.has_other_than_drums && is_piano_track(track))
             .flat_map(|track| {
                 track
                     .notes
@@ -44,7 +58,12 @@ impl Score {
                         end: note.end,
                         pitch: note.note,
                         track_id: track.track_id,
-                        track_name: track.name.clone(),
+                        track_name: track.name.clone().or_else(|| {
+                            let program = track.programs.last().map(|p| p.program).unwrap_or(0);
+                            midi_file::INSTRUMENT_NAMES
+                                .get(program as usize)
+                                .map(|n| n.to_string())
+                        }),
                     })
             })
             .collect();

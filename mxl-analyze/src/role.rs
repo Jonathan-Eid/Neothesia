@@ -4,10 +4,9 @@
 
 use music_theory::{Chord, pitch_class};
 
-use crate::{
-    model::{NoteId, Score},
-    schema::{BeatStrength, NoteRole},
-};
+use song_analysis::{BeatStrength, NoteRole};
+
+use crate::model::{NoteId, Score};
 
 pub fn beat_strength(score: &Score, id: NoteId) -> BeatStrength {
     let note = score.get(id);
@@ -43,7 +42,7 @@ pub fn classify_role(score: &Score, anchor: NoteId, chord: &Chord) -> NoteRole {
 
     if is_chord_tone {
         return NoteRole::ChordTone {
-            interval: music_theory::interval_short(root_relative),
+            interval: music_theory::interval_short(root_relative).to_string(),
         };
     }
 
@@ -122,7 +121,7 @@ mod tests {
     fn chord_tones_are_named_by_interval() {
         let s = score_with_4_4(vec![note(0, 0, 0, 64)]);
         let role = classify_role(&s, NoteId(0), &c_major());
-        assert!(matches!(role, NoteRole::ChordTone { interval: "3" }));
+        assert!(matches!(role, NoteRole::ChordTone { interval } if interval == "3"));
     }
 
     #[test]

@@ -1,6 +1,8 @@
+use std::{path::Path, sync::Arc};
+
 use midi_file::MidiTrack;
 
-use crate::context::Context;
+use crate::{context::Context, precomputed_analysis::PrecomputedAnalysis};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PlayerConfig {
@@ -63,25 +65,39 @@ impl SongConfig {
 pub struct Song {
     pub file: midi_file::MidiFile,
     pub config: SongConfig,
+    /// The output of running `mxl-analyze` on this song, if it exists next
+    /// to the file that was opened. `None` just means nothing to enrich the
+    /// theory panel with - never an error.
+    pub precomputed: Option<Arc<PrecomputedAnalysis>>,
 }
 
 impl Song {
     pub fn new(file: midi_file::MidiFile) -> Self {
         let config = SongConfig::new(&file.tracks);
-        Self { file, config }
+        Self {
+            file,
+            config,
+            precomputed: None,
+        }
+    }
+
+    /// Like `new`, but also looks for `<path>`'s sibling `.analysis.json`.
+    pub fn with_path(file: midi_file::MidiFile, path: &Path) -> Self {
+        let mut song = Self::new(file);
+        song.precomputed = PrecomputedAnalysis::load_sibling(path).map(Arc::new);
+        song
     }
 
     pub fn from_env(ctx: &Context) -> Option<Self> {
         let args: Vec<String> = std::env::args().collect();
-        let midi_file = if args.len() > 1 {
-            midi_file::MidiFile::new(&args[1]).ok()
-        } else if let Some(last) = ctx.config.last_opened_song() {
-            midi_file::MidiFile::new(last).ok()
+        let path = if args.len() > 1 {
+            std::path::PathBuf::from(&args[1])
         } else {
-            None
+            ctx.config.last_opened_song()?.clone()
         };
 
-        Some(Self::new(midi_file?))
+        let midi_file = midi_file::MidiFile::new(&path).ok()?;
+        Some(Self::with_path(midi_file, &path))
     }
 }
 

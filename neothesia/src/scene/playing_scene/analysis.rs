@@ -63,6 +63,10 @@ pub struct SongAnalysis {
     longest: Duration,
     /// Key of the whole song, used when the file has no key signature.
     estimated_key: Key,
+    /// Duration-weighted pitch-class histogram behind `estimated_key` - kept
+    /// around so a key signature's major/minor ambiguity can be resolved the
+    /// same way `estimated_key` itself was, not by a second heuristic.
+    key_weights: [f32; 12],
     onsets: Vec<Duration>,
     left_onsets: Vec<Duration>,
     right_onsets: Vec<Duration>,
@@ -120,6 +124,7 @@ impl SongAnalysis {
             notes,
             longest,
             estimated_key: Key::estimate(&weights),
+            key_weights: weights,
             onsets,
             left_onsets,
             right_onsets,
@@ -243,21 +248,12 @@ impl SongAnalysis {
     pub fn analyse(&self, song: &Song, time: Duration) -> Snapshot {
         let signatures = &song.file.signature_track;
 
-        // A key signature is shared by a major key and its relative minor, and
-        // files are careless about saying which, so the notes get a vote.
+        // A key signature is shared by a major key and its relative minor,
+        // and files are careless about saying which - the same resolution
+        // `mxl-analyze` uses, so the live panel and the offline analysis
+        // never disagree about it.
         let key = match signatures.key_signature_at(&time) {
-            Some(signature) => {
-                let relative_minor = Key::from_fifths(signature.fifths, true);
-
-                if signature.minor
-                    || (self.estimated_key.minor
-                        && self.estimated_key.tonic == relative_minor.tonic)
-                {
-                    relative_minor
-                } else {
-                    Key::from_fifths(signature.fifths, false)
-                }
-            }
+            Some(signature) => Key::resolve_mode(signature.fifths, &self.key_weights),
             None => self.estimated_key,
         };
 
@@ -303,7 +299,7 @@ impl SongAnalysis {
             .unwrap_or("");
 
         let chord = music_theory::detect(&all);
-        let roman = chord
+        let mut roman = chord
             .as_ref()
             .map(|chord| key.roman(chord))
             .unwrap_or_default();
@@ -311,6 +307,32 @@ impl SongAnalysis {
             .as_ref()
             .map(|chord| key.mode_of_degree(key.degree(chord.root).0))
             .unwrap_or("");
+
+        // `mxl-analyze`'s per-note answer, if the song has been run through
+        // it: covers exactly what the live, instant-only detection above
+        // can't - a monophonic run has nothing to detect a chord from at any
+        // single moment, but a precomputed analysis resolved it by looking
+        // at the whole phrase.
+        let precomputed = newest.and_then(|note| {
+            song.precomputed
+                .as_ref()?
+                .lookup(note.track_id, note.start, note.note)
+        });
+
+        let (precomputed_symbol, precomputed_description) = match precomputed {
+            Some(note) if note.resolution == song_analysis::Resolution::PedalTone => (
+                Some("pedal".to_string()),
+                Some("no implied chord - a sustained or repeated note".to_string()),
+            ),
+            Some(note) => (note.chord_symbol.clone(), note.chord_description.clone()),
+            None => (None, None),
+        };
+
+        if let Some(note) = precomputed
+            && let Some(precomputed_roman) = &note.roman_numeral
+        {
+            roman = precomputed_roman.clone();
+        }
 
         Snapshot {
             key,
@@ -323,6 +345,8 @@ impl SongAnalysis {
             mode,
             rhythm,
             chord,
+            precomputed_symbol,
+            precomputed_description,
         }
     }
 
@@ -436,14 +460,20 @@ pub struct Snapshot {
     pub roman: String,
     pub mode: &'static str,
     pub rhythm: &'static str,
+    /// From a loaded `.analysis.json`, when it names this exact chord more
+    /// confidently (or at all) than the live instant-only detection could.
+    pub precomputed_symbol: Option<String>,
+    pub precomputed_description: Option<String>,
 }
 
 impl Snapshot {
     pub fn symbol(&self) -> String {
-        self.chord
-            .as_ref()
-            .map(|chord| chord.symbol(self.key.prefers_flats()))
-            .unwrap_or_default()
+        self.precomputed_symbol.clone().unwrap_or_else(|| {
+            self.chord
+                .as_ref()
+                .map(|chord| chord.symbol(self.key.prefers_flats()))
+                .unwrap_or_default()
+        })
     }
 
     /// Names of everything sounding, for when there is no chord to name.
@@ -467,10 +497,12 @@ impl Snapshot {
     }
 
     pub fn description(&self) -> String {
-        self.chord
-            .as_ref()
-            .map(|chord| chord.description(self.key.prefers_flats()))
-            .unwrap_or_default()
+        self.precomputed_description.clone().unwrap_or_else(|| {
+            self.chord
+                .as_ref()
+                .map(|chord| chord.description(self.key.prefers_flats()))
+                .unwrap_or_default()
+        })
     }
 }
 
@@ -487,6 +519,50 @@ mod tests {
         // repeated, and carries a C minor key signature.
         let file = midi_file::MidiFile::new("../midi-file/test-assets/test.musicxml").unwrap();
         Song::new(file)
+    }
+
+    /// Same fixture, but loaded the way a real user would after running
+    /// `mxl-analyze` on it once - through the sibling `.analysis.json` this
+    /// crate's build script does not generate, so it's checked in directly
+    /// (it's the real tool's real output, not hand-authored).
+    fn song_with_precomputed() -> Song {
+        let path = std::path::Path::new("../midi-file/test-assets/test.musicxml");
+        let file = midi_file::MidiFile::new(path).unwrap();
+        Song::with_path(file, path)
+    }
+
+    #[test]
+    fn precomputed_analysis_enriches_what_the_live_instant_cannot() {
+        let song = song_with_precomputed();
+        assert!(
+            song.precomputed.is_some(),
+            "fixture's sibling .analysis.json should have loaded"
+        );
+
+        let analysis = analysis(&song);
+
+        // At exactly t=4.0s only G2 is sounding (the whole-note bass note
+        // that opens measure two) - a single pitch class, nothing for the
+        // live, instant-only detector to name a chord from.
+        let time = Duration::from_millis(4000);
+        let live_chord = music_theory::detect(
+            &analysis
+                .notes_at(&song, time)
+                .iter()
+                .map(|n| n.key)
+                .collect::<Vec<_>>(),
+        );
+        assert!(
+            live_chord.is_none(),
+            "a single bass note alone should not resolve live"
+        );
+
+        // The precomputed analysis looked back across the phrase and named
+        // it Cm (first inversion, G in the bass) - that's what the panel
+        // should show instead of nothing.
+        let snapshot = analysis.analyse(&song, time);
+        assert_eq!(snapshot.symbol(), "Cm/G");
+        assert_eq!(snapshot.roman, "i");
     }
 
     #[test]

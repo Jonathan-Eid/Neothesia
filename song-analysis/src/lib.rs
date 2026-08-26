@@ -1,10 +1,11 @@
-//! `song.analysis.json`'s shape. Emit-only - freshly regenerated each run, so
-//! a single version tag is enough, no need for the config crate's
-//! backward-compatible `V1(...)` enum ceremony.
+//! The shape of `<file>.analysis.json`: per-note chord/scale/role analysis
+//! produced by `mxl-analyze` and read back by anything that wants to enrich a
+//! song with it (namely Neothesia's theory panel). Shared so the writer and
+//! the reader can never drift apart into two slightly different formats.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisFile {
     pub version: u32,
     pub source_file: String,
@@ -14,23 +15,27 @@ pub struct AnalysisFile {
     pub llm_usage: Option<LlmUsage>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct KeyHint {
-    pub tonic: &'static str,
+    pub tonic: u8,
     pub minor: bool,
     pub fifths: i8,
 }
 
-#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Resolution {
     Vertical,
     Expanded,
     Escalated,
+    /// Correctly, not a failure: the widest window still contains only one
+    /// pitch class - a pedal point or a droning ostinato, not a chord at all.
+    /// Asking an LLM to name a triad for it would just manufacture one.
+    PedalTone,
     Unresolved,
 }
 
-#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BeatStrength {
     Strong,
@@ -38,10 +43,10 @@ pub enum BeatStrength {
     Weak,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum NoteRole {
-    ChordTone { interval: &'static str },
+    ChordTone { interval: String },
     PassingTone,
     NeighborTone,
     Appoggiatura,
@@ -49,7 +54,7 @@ pub enum NoteRole {
     Unclassified,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoteAnalysis {
     pub id: usize,
     pub track_id: usize,
@@ -74,7 +79,7 @@ pub struct NoteAnalysis {
     pub span_id: Option<usize>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpanAnalysis {
     pub id: usize,
     pub note_ids: Vec<usize>,
@@ -83,7 +88,7 @@ pub struct SpanAnalysis {
     pub outcome: SpanOutcome,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "status")]
 pub enum SpanOutcome {
     ResolvedByLlm {
@@ -100,7 +105,7 @@ pub enum SpanOutcome {
     LeftUnresolved,
 }
 
-#[derive(Serialize, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LlmUsage {
     pub calls: u32,
     pub input_tokens: u64,

@@ -4,6 +4,7 @@ mod context;
 mod icons;
 mod input_manager;
 mod output_manager;
+mod precomputed_analysis;
 mod scene;
 mod song;
 mod utils;

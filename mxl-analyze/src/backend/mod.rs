@@ -10,10 +10,11 @@ pub use test_double::FixedBackend;
 
 use music_theory::chord::SHAPES;
 
+use song_analysis::LlmUsage;
+
 use crate::{
     model::{NoteId, Score},
     role::plausibly_belongs_to,
-    schema::LlmUsage,
 };
 
 pub struct SpanNoteText {

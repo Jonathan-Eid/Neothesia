@@ -5,7 +5,7 @@
 
 use std::process::Command;
 
-use crate::schema::LlmUsage;
+use song_analysis::LlmUsage;
 
 use super::{AnalysisBackend, BackendError, SpanRequest, SpanResponse};
 

@@ -13,6 +13,7 @@ members = [
   "music-theory",
   "mxl-analyze",
   "nuon",
+  "song-analysis",
 ]
 
 default-members = ["neothesia"]
@@ -28,6 +29,7 @@ neothesia-image = { path = "./neothesia-image" }
 midi-file = { path = "./midi-file" }
 midi-io = { path = "./midi-io" }
 music-theory = { path = "./music-theory" }
+song-analysis = { path = "./song-analysis" }
 piano-layout = { path = "./piano-layout" }
 ffmpeg-encoder = { path = "./ffmpeg-encoder" }
 nuon = { path = "./nuon" }

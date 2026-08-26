@@ -1,0 +1,370 @@
+{
+  "version": 1,
+  "source_file": "test.musicxml",
+  "key_hint": {
+    "tonic": 0,
+    "minor": true,
+    "fifths": -3
+  },
+  "notes": [
+    {
+      "id": 0,
+      "track_id": 2,
+      "track_name": "Piano · bass",
+      "start_seconds": 0.0,
+      "duration_seconds": 2.0,
+      "pitch": 48,
+      "pitch_name": "C3",
+      "measure": 1,
+      "beat": 0.0,
+      "beat_strength": "strong",
+      "resolution": "expanded",
+      "chord_symbol": "Cm",
+      "chord_description": "C minor, root position",
+      "roman_numeral": "i",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "1"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "confidence": 37,
+      "span_id": null
+    },
+    {
+      "id": 1,
+      "track_id": 1,
+      "track_name": "Piano · treble",
+      "start_seconds": 0.0,
+      "duration_seconds": 1.0,
+      "pitch": 72,
+      "pitch_name": "C5",
+      "measure": 1,
+      "beat": 0.0,
+      "beat_strength": "strong",
+      "resolution": "expanded",
+      "chord_symbol": "Cm",
+      "chord_description": "C minor, root position",
+      "roman_numeral": "i",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "1"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "confidence": 37,
+      "span_id": null
+    },
+    {
+      "id": 2,
+      "track_id": 1,
+      "track_name": "Piano · treble",
+      "start_seconds": 1.0,
+      "duration_seconds": 1.0,
+      "pitch": 75,
+      "pitch_name": "Eb5",
+      "measure": 1,
+      "beat": 2.0,
+      "beat_strength": "medium",
+      "resolution": "vertical",
+      "chord_symbol": "Cm",
+      "chord_description": "C minor, root position",
+      "roman_numeral": "i",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "b3"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        0,
+        2,
+        3
+      ],
+      "confidence": 37,
+      "span_id": null
+    },
+    {
+      "id": 3,
+      "track_id": 1,
+      "track_name": "Piano · treble",
+      "start_seconds": 1.0,
+      "duration_seconds": 1.0,
+      "pitch": 79,
+      "pitch_name": "G5",
+      "measure": 1,
+      "beat": 2.0,
+      "beat_strength": "medium",
+      "resolution": "vertical",
+      "chord_symbol": "Cm",
+      "chord_description": "C minor, root position",
+      "roman_numeral": "i",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "5"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        0,
+        2,
+        3
+      ],
+      "confidence": 37,
+      "span_id": null
+    },
+    {
+      "id": 4,
+      "track_id": 2,
+      "track_name": "Piano · bass",
+      "start_seconds": 2.0,
+      "duration_seconds": 2.0,
+      "pitch": 48,
+      "pitch_name": "C3",
+      "measure": 2,
+      "beat": 0.0,
+      "beat_strength": "strong",
+      "resolution": "expanded",
+      "chord_symbol": "C5",
+      "chord_description": "C power chord, root position",
+      "roman_numeral": "I",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "1"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        4,
+        5,
+        3
+      ],
+      "confidence": 27,
+      "span_id": null
+    },
+    {
+      "id": 5,
+      "track_id": 1,
+      "track_name": "Piano · treble",
+      "start_seconds": 2.0,
+      "duration_seconds": 1.0,
+      "pitch": 72,
+      "pitch_name": "C5",
+      "measure": 2,
+      "beat": 0.0,
+      "beat_strength": "strong",
+      "resolution": "expanded",
+      "chord_symbol": "C5",
+      "chord_description": "C power chord, root position",
+      "roman_numeral": "I",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "1"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        4,
+        5,
+        3
+      ],
+      "confidence": 27,
+      "span_id": null
+    },
+    {
+      "id": 6,
+      "track_id": 1,
+      "track_name": "Piano · treble",
+      "start_seconds": 3.0,
+      "duration_seconds": 1.0,
+      "pitch": 75,
+      "pitch_name": "Eb5",
+      "measure": 2,
+      "beat": 2.0,
+      "beat_strength": "medium",
+      "resolution": "vertical",
+      "chord_symbol": "Cm",
+      "chord_description": "C minor, root position",
+      "roman_numeral": "i",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "b3"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        4,
+        6,
+        7
+      ],
+      "confidence": 37,
+      "span_id": null
+    },
+    {
+      "id": 7,
+      "track_id": 1,
+      "track_name": "Piano · treble",
+      "start_seconds": 3.0,
+      "duration_seconds": 1.0,
+      "pitch": 79,
+      "pitch_name": "G5",
+      "measure": 2,
+      "beat": 2.0,
+      "beat_strength": "medium",
+      "resolution": "vertical",
+      "chord_symbol": "Cm",
+      "chord_description": "C minor, root position",
+      "roman_numeral": "i",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "5"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        4,
+        6,
+        7
+      ],
+      "confidence": 37,
+      "span_id": null
+    },
+    {
+      "id": 8,
+      "track_id": 2,
+      "track_name": "Piano · bass",
+      "start_seconds": 4.0,
+      "duration_seconds": 2.0,
+      "pitch": 43,
+      "pitch_name": "G2",
+      "measure": 3,
+      "beat": 0.0,
+      "beat_strength": "strong",
+      "resolution": "expanded",
+      "chord_symbol": "Cm/G",
+      "chord_description": "C minor, 2nd inv",
+      "roman_numeral": "i",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "5"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        8,
+        7,
+        6,
+        5
+      ],
+      "confidence": 34,
+      "span_id": null
+    },
+    {
+      "id": 9,
+      "track_id": 1,
+      "track_name": "Piano · treble",
+      "start_seconds": 4.96875,
+      "duration_seconds": 0.03125,
+      "pitch": 71,
+      "pitch_name": "B4",
+      "measure": 3,
+      "beat": 1.9375,
+      "beat_strength": "weak",
+      "resolution": "expanded",
+      "chord_symbol": "Gaug",
+      "chord_description": "G augmented, root position",
+      "roman_numeral": "V+",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "3"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        8,
+        9,
+        7,
+        6
+      ],
+      "confidence": 37,
+      "span_id": null
+    },
+    {
+      "id": 10,
+      "track_id": 1,
+      "track_name": "Piano · treble",
+      "start_seconds": 5.0,
+      "duration_seconds": 1.0,
+      "pitch": 72,
+      "pitch_name": "C5",
+      "measure": 3,
+      "beat": 2.0,
+      "beat_strength": "medium",
+      "resolution": "expanded",
+      "chord_symbol": "Cm/G",
+      "chord_description": "C minor, 2nd inv",
+      "roman_numeral": "i",
+      "role": {
+        "kind": "chord_tone",
+        "interval": "1"
+      },
+      "local_key": {
+        "tonic": 0,
+        "minor": true,
+        "fifths": -3
+      },
+      "window_note_ids": [
+        8,
+        10,
+        7,
+        6
+      ],
+      "confidence": 34,
+      "span_id": null
+    }
+  ],
+  "spans": [],
+  "llm_usage": null
+}

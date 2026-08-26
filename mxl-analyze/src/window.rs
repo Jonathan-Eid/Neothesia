@@ -171,6 +171,20 @@ pub fn expand_window(score: &Score, anchor: NoteId, cap: &ExpandCap) -> ExpandRe
     }
 }
 
+/// Whether a window's notes reduce to a single pitch class - a pedal point
+/// or droning ostinato, not a chord. Distinguished from "we don't have a
+/// confident match" (weak but plural) by literally having nothing else to
+/// disambiguate: there is no chord to ask about.
+pub fn is_pedal_tone(score: &Score, window_note_ids: &[NoteId]) -> bool {
+    let mut classes: Vec<u8> = window_note_ids
+        .iter()
+        .map(|id| pitch_class(score.get(*id).pitch))
+        .collect();
+    classes.sort_unstable();
+    classes.dedup();
+    classes.len() <= 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,6 +253,23 @@ mod tests {
         let result = expand_window(&s, NoteId(0), &ExpandCap::default());
         assert_eq!(result.outcome, ExpandOutcome::StoppedAtSilence);
         assert!(result.best_chord.is_none());
+    }
+
+    #[test]
+    fn a_repeated_octave_is_a_pedal_tone_not_unresolved() {
+        // D2, D4, D2, D4... - always the same pitch class, never a chord.
+        let s = score(vec![
+            note(0, 0, 200, 38),
+            note(1, 200, 400, 62),
+            note(2, 400, 600, 38),
+            note(3, 600, 800, 62),
+        ]);
+        let cap = ExpandCap {
+            max_notes: 8,
+            max_duration: Duration::from_secs(10),
+        };
+        let result = expand_window(&s, NoteId(0), &cap);
+        assert!(is_pedal_tone(&s, &result.window_note_ids));
     }
 
     #[test]
