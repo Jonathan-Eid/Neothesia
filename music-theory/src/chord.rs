@@ -96,6 +96,9 @@ pub struct Chord {
     pub tensions: Vec<u8>,
     /// The notes this was deduced from, low to high.
     pub notes: Vec<u8>,
+    /// Raw match score from `detect()`. Only meaningful relative to other
+    /// `Chord::confidence` values, never as an absolute quality measure.
+    pub confidence: i32,
 }
 
 impl Chord {
@@ -228,6 +231,7 @@ pub fn detect(notes: &[u8]) -> Option<Chord> {
                         shape: id,
                         tensions,
                         notes: notes.clone(),
+                        confidence: score,
                     },
                 ));
             }

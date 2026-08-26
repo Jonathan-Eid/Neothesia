@@ -1565,6 +1565,17 @@ name = "music-theory"
 version = "0.1.0"
 
 [[package]]
+name = "mxl-analyze"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "midi-file",
+ "music-theory",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "naga"
 version = "30.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -11,6 +11,7 @@ members = [
   "midi-file",
   "midi-io",
   "music-theory",
+  "mxl-analyze",
   "nuon",
 ]
 

@@ -186,25 +186,11 @@ impl Key {
     /// Uses the Krumhansl-Schmuckler profiles, correlating how much each pitch
     /// class is used against how much each key is expected to use it.
     pub fn estimate(weights: &[f32; 12]) -> Key {
-        const MAJOR_PROFILE: [f32; 12] = [
-            6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
-        ];
-        const MINOR_PROFILE: [f32; 12] = [
-            6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
-        ];
-
         let mut best = (f32::MIN, Key::default());
 
         for tonic in 0..12u8 {
             for minor in [false, true] {
-                let profile = if minor { MINOR_PROFILE } else { MAJOR_PROFILE };
-
-                let score: f32 = (0..12)
-                    .map(|pc| {
-                        let step = (pc + 12 - tonic as usize) % 12;
-                        weights[pc] * profile[step]
-                    })
-                    .sum();
+                let score = Self::profile_score(tonic, minor, weights);
 
                 if score > best.0 {
                     best = (score, Key::of(tonic, minor));
@@ -213,6 +199,43 @@ impl Key {
         }
 
         best.1
+    }
+
+    /// A key signature (a count of sharps/flats) is shared by a major key and
+    /// its relative minor - MusicXML files routinely leave the choice between
+    /// them unstated (or default to major) even when the piece is plainly in
+    /// the minor one. This picks the mode the actual notes support, keeping
+    /// the signature's pitch collection fixed.
+    pub fn resolve_mode(fifths: i8, weights: &[f32; 12]) -> Key {
+        let major = Key::from_fifths(fifths, false);
+        let minor = Key::from_fifths(fifths, true);
+
+        let major_score = Self::profile_score(major.tonic, false, weights);
+        let minor_score = Self::profile_score(minor.tonic, true, weights);
+
+        if minor_score > major_score {
+            minor
+        } else {
+            major
+        }
+    }
+
+    fn profile_score(tonic: u8, minor: bool, weights: &[f32; 12]) -> f32 {
+        const MAJOR_PROFILE: [f32; 12] = [
+            6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+        ];
+        const MINOR_PROFILE: [f32; 12] = [
+            6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
+        ];
+
+        let profile = if minor { MINOR_PROFILE } else { MAJOR_PROFILE };
+
+        (0..12)
+            .map(|pc| {
+                let step = (pc + 12 - tonic as usize) % 12;
+                weights[pc] * profile[step]
+            })
+            .sum()
     }
 
     /// Key with a given tonic, spelled the way that key usually is.
@@ -350,6 +373,30 @@ mod tests {
 
         let a_minor = Key::from_fifths(0, true);
         assert_eq!(a_minor.mode_of_degree(0), "Aeolian");
+    }
+
+    #[test]
+    fn resolve_mode_prefers_minor_when_the_notes_say_so() {
+        // A D minor collection (1 flat, same as F major): D and A dominate,
+        // C is natural (not C#), consistent with a i-heavy minor passage.
+        let mut weights = [0.0; 12];
+        for (pc, weight) in [(2, 8.0), (5, 4.0), (9, 7.0), (0, 3.0), (7, 5.0)] {
+            weights[pc] = weight;
+        }
+
+        let key = Key::resolve_mode(-1, &weights);
+        assert_eq!(key.name(), "D minor");
+    }
+
+    #[test]
+    fn resolve_mode_prefers_major_when_the_notes_say_so() {
+        let mut weights = [0.0; 12];
+        for (pc, weight) in [(5, 8.0), (0, 6.0), (9, 3.0), (2, 4.0), (7, 7.0)] {
+            weights[pc] = weight;
+        }
+
+        let key = Key::resolve_mode(-1, &weights);
+        assert_eq!(key.name(), "F major");
     }
 
     #[test]

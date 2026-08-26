@@ -37,11 +37,7 @@ fn is_zip(data: &[u8]) -> bool {
 }
 
 pub fn parse(data: &[u8]) -> Result<ConvertedScore, String> {
-    let xml = if is_zip(data) {
-        read_container(data)?
-    } else {
-        decode_text(data.to_vec())?
-    };
+    let xml = extract_musicxml(data)?;
 
     let opt = roxmltree::ParsingOptions {
         allow_dtd: true,
@@ -51,6 +47,18 @@ pub fn parse(data: &[u8]) -> Result<ConvertedScore, String> {
         .map_err(|err| format!("MusicXML Parsing Error ({err})"))?;
 
     convert::convert(&doc)
+}
+
+/// The raw MusicXML text a `.mxl`/`.musicxml` file contains, decompressed and
+/// decoded but otherwise untouched. Useful for tools that want to hand the
+/// actual score to something else (an LLM, a diff, a search) rather than the
+/// parsed-and-converted result `parse()` produces.
+pub fn extract_musicxml(data: &[u8]) -> Result<String, String> {
+    if is_zip(data) {
+        read_container(data)
+    } else {
+        decode_text(data.to_vec())
+    }
 }
 
 /// Pulls the root score out of a `.mxl` zip container.
