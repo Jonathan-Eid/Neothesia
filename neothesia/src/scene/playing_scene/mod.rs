@@ -340,6 +340,14 @@ impl Scene for PlayingScene {
 
         TopBar::update(self, ctx);
 
+        // Outstanding notes only count as "the thing blocking us" while the
+        // song is actually trying to move forward on its own.
+        let waiting_for = if self.stepping || self.player.is_paused() {
+            Vec::new()
+        } else {
+            self.player.play_along().required_notes()
+        };
+
         if let Some(snapshot) = self.snapshot.as_ref() {
             if ctx.config.theory_panel() {
                 theory_panel::build(
@@ -347,6 +355,8 @@ impl Scene for PlayingScene {
                     ctx,
                     snapshot,
                     self.stepping,
+                    &waiting_for,
+                    snapshot.key.prefers_flats(),
                     ctx.window_state.logical_size.width,
                     self.keyboard.pos().y - theory_panel::HEIGHT - 12.0,
                 );

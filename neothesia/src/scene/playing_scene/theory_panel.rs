@@ -14,6 +14,7 @@ pub const HEIGHT: f32 = 116.0;
 const PAD: f32 = 18.0;
 const DIM: [u8; 3] = [150, 148, 160];
 const FAINT: [u8; 3] = [110, 108, 120];
+const WAITING: [u8; 3] = [255, 196, 84];
 
 pub struct PanelColors {
     pub left: [u8; 3],
@@ -36,14 +37,30 @@ impl PanelColors {
     }
 }
 
-pub fn build(ui: &mut Ui, ctx: &Context, snapshot: &Snapshot, stepping: bool, width: f32, y: f32) {
+#[allow(clippy::too_many_arguments)]
+pub fn build(
+    ui: &mut Ui,
+    ctx: &Context,
+    snapshot: &Snapshot,
+    stepping: bool,
+    waiting_for: &[u8],
+    flats: bool,
+    width: f32,
+    y: f32,
+) {
     let colors = PanelColors::from_config(ctx);
     let column = (width - PAD * 2.0) / 3.0;
 
     nuon::translate().x(0.0).y(y).build(ui, |ui| {
+        let bg = if waiting_for.is_empty() {
+            nuon::Color::new_u8(24, 23, 28, 0.88)
+        } else {
+            nuon::Color::new_u8(48, 36, 16, 0.9)
+        };
+
         nuon::quad()
             .size(width, HEIGHT)
-            .color(nuon::Color::new_u8(24, 23, 28, 0.88))
+            .color(bg)
             .border_radius([12.0; 4])
             .build(ui);
 
@@ -58,8 +75,46 @@ pub fn build(ui: &mut Ui, ctx: &Context, snapshot: &Snapshot, stepping: bool, wi
             true,
         );
 
-        center(ui, snapshot, stepping, PAD + column, column);
+        if waiting_for.is_empty() {
+            center(ui, snapshot, stepping, PAD + column, column);
+        } else {
+            waiting(ui, waiting_for, flats, PAD + column, column);
+        }
     });
+}
+
+/// What is standing between the player and the rest of the song.
+fn waiting(ui: &mut Ui, waiting_for: &[u8], flats: bool, x: f32, width: f32) {
+    let text = |ui: &mut Ui, text: &str, y: f32, size: f32, color: [u8; 3], bold: bool| {
+        nuon::label()
+            .text(text)
+            .x(x)
+            .y(y)
+            .width(width)
+            .height(size * 1.4)
+            .font_size(size)
+            .color(color)
+            .bold(bold)
+            .build(ui);
+    };
+
+    text(ui, "WAITING FOR", 10.0, 11.0, WAITING, false);
+
+    let names: String = waiting_for
+        .iter()
+        .map(|note| music_theory::note_name_with_octave(*note, flats))
+        .collect::<Vec<_>>()
+        .join("  ");
+    text(ui, &names, 30.0, 27.0, [255, 255, 255], true);
+
+    text(
+        ui,
+        "play the highlighted key(s) to continue",
+        68.0,
+        13.0,
+        DIM,
+        false,
+    );
 }
 
 /// One hand: what it is playing, and what that is called.

@@ -411,4 +411,12 @@ impl PlayAlong {
     pub fn are_required_keys_pressed(&self) -> bool {
         self.required_notes.is_empty()
     }
+
+    /// Notes the player still has to press before the song can move on, low to
+    /// high. Empty whenever nothing is currently blocking playback.
+    pub fn required_notes(&self) -> Vec<u8> {
+        let mut notes: Vec<u8> = self.required_notes.keys().copied().collect();
+        notes.sort_unstable();
+        notes
+    }
 }
