@@ -81,7 +81,7 @@ impl SongAnalysis {
             .tracks
             .iter()
             .filter(|track| !track.notes.is_empty())
-            .filter(|track| !(track.has_drums && !track.has_other_than_drums))
+            .filter(|track| !track.has_drums || track.has_other_than_drums)
             .filter(|track| song.config.is_active(track.track_id, hide_muted))
             .collect();
 
