@@ -37,27 +37,12 @@ fn call_open_file_picker() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Called from Kotlin (`MainActivity.nativeOnFilePicked`) once the picker
+/// Called from Kotlin (`MainActivity.nativeOnFilePicked`, via the JNI
+/// trampoline in the `neothesia-android` cdylib crate) once the picker
 /// activity returns. `path` is `None` when the user cancelled, or the
 /// Kotlin-side copy-to-cache step failed.
-fn on_file_picked(path: Option<PathBuf>) {
+pub fn on_file_picked(path: Option<PathBuf>) {
     if let Some(tx) = PENDING_PICK.lock().unwrap().take() {
         let _ = tx.send(path);
     }
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_github_polymeilex_neothesia_MainActivity_nativeOnFilePicked(
-    mut env: jni::JNIEnv,
-    _class: jni::objects::JClass,
-    path: jni::objects::JString,
-) {
-    let path = if path.is_null() {
-        None
-    } else {
-        env.get_string(&path)
-            .ok()
-            .map(|s| PathBuf::from(String::from(s)))
-    };
-    on_file_picked(path);
 }

@@ -29,9 +29,10 @@ runs:
 
     - name: Build Rust cdylib (aarch64)
       shell: bash
-      # `--lib` selects the `cdylib` target: the package also has a `[[bin]]`
-      # (used on desktop) that cargo-ndk would otherwise try to build too.
-      # Output goes straight into the Gradle project's jniLibs dir.
+      # `neothesia-android` is a thin cdylib shell around the real
+      # `neothesia` crate (kept separate so a plain desktop `cargo build`
+      # doesn't also compile an unused cdylib). Output goes straight into
+      # the Gradle project's jniLibs dir.
       #
       # --platform must be >= minSdk (26): cpal's Android backend links
       # against libaaudio.so, which only exists in the NDK sysroot for API
@@ -41,7 +42,7 @@ runs:
           -t arm64-v8a \
           -o android/app/src/main/jniLibs \
           --platform 26 \
-          build --release --lib -p neothesia
+          build --release --lib -p neothesia-android
 
     - uses: gradle/actions/setup-gradle@v4
       with:

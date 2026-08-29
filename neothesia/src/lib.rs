@@ -1,7 +1,7 @@
 #![allow(clippy::collapsible_match, clippy::single_match)]
 
 #[cfg(target_os = "android")]
-mod android;
+pub mod android;
 mod context;
 mod icons;
 mod input_manager;
@@ -444,9 +444,15 @@ pub fn main_desktop() {
     run_event_loop(event_loop);
 }
 
+/// Called from the `android_main` trampoline in the `neothesia-android`
+/// cdylib crate (the actual `#[no_mangle]` entry point NativeActivity looks
+/// up). Kept here, rather than in that crate, so the desktop `neothesia`
+/// package's own `[lib]` target can stay a plain rlib - only the tiny
+/// cdylib shell needs `crate-type = ["cdylib"]`, which used to be declared
+/// here and made every desktop `cargo build`/`cargo run` also compile an
+/// unused `libneothesia.so` alongside the real binary.
 #[cfg(target_os = "android")]
-#[unsafe(no_mangle)]
-fn android_main(app: android_activity::AndroidApp) {
+pub fn main_android(app: android_activity::AndroidApp) {
     use winit::platform::android::EventLoopBuilderExtAndroid;
 
     if let Some(path) = app.internal_data_path() {

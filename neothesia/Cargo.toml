@@ -63,11 +63,6 @@ android_logger = "0.14"
 jni = "0.21"
 ndk-context.workspace = true
 
-[lib]
-name = "neothesia"
-crate-type = ["cdylib", "rlib"]
-path = "src/lib.rs"
-
 [[bin]]
 name = "neothesia"
 path = "src/main.rs"

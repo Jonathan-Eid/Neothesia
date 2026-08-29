@@ -1,0 +1,26 @@
+[package]
+name = "neothesia-android"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+# This crate is the only thing that needs to be a cdylib - it's a thin JNI
+# shell exporting the two symbols NativeActivity/Kotlin look up by name
+# (`android_main`, `Java_..._nativeOnFilePicked`), delegating straight into
+# the real `neothesia` crate. Keeping it separate means the desktop
+# `neothesia` package's own [lib] can stay a plain rlib, so a normal
+# `cargo build`/`cargo run` doesn't also compile an unused cdylib.
+#
+# Named "neothesia" (not "neothesia_android") because the output filename
+# has to match AndroidManifest.xml's `android.app.lib_name` meta-data.
+[lib]
+name = "neothesia"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+neothesia.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+android-activity = { version = "=0.6.0", features = ["native-activity"] }
+jni = "0.21"

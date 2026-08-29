@@ -1742,6 +1742,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "neothesia-android"
+version = "0.1.0"
+dependencies = [
+ "android-activity",
+ "jni 0.21.1",
+ "neothesia",
+]
+
+[[package]]
 name = "neothesia-cli"
 version = "0.1.0"
 dependencies = [

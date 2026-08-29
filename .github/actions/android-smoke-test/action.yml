@@ -41,7 +41,7 @@ runs:
           -t x86_64 \
           -o android/app/src/main/jniLibs \
           --platform 26 \
-          build --lib -p neothesia
+          build --lib -p neothesia-android
 
     - uses: gradle/actions/setup-gradle@v4
       with:

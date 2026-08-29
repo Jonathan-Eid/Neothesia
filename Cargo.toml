@@ -4,6 +4,7 @@ members = [
   "wgpu-jumpstart",
   "ffmpeg-encoder",
   "neothesia",
+  "neothesia-android",
   "neothesia-ai",
   "neothesia-cli",
   "neothesia-core",
@@ -26,6 +27,7 @@ strip = true
 edition = "2024"
 
 [workspace.dependencies]
+neothesia = { path = "./neothesia" }
 wgpu-jumpstart = { path = "./wgpu-jumpstart" }
 neothesia-core = { path = "./neothesia-core" }
 neothesia-image = { path = "./neothesia-image" }
