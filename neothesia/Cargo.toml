@@ -73,7 +73,10 @@ embed-resource.workspace = true
 [package.metadata.android]
 package = "com.github.polymeilex.neothesia"
 apk_name = "neothesia"
-build_targets = ["aarch64-linux-android", "armv7-linux-androideabi"]
+# aarch64 covers virtually all real Android devices in active use; skipping
+# armv7 roughly halves the APK for no practical loss of reach.
+build_targets = ["aarch64-linux-android"]
+strip = "default"
 
 [package.metadata.android.sdk]
 min_sdk_version = 26

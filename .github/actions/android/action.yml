@@ -6,7 +6,7 @@ runs:
     - uses: Swatinem/rust-cache@v2
     - uses: dtolnay/rust-toolchain@stable
       with:
-        targets: aarch64-linux-android,armv7-linux-androideabi
+        targets: aarch64-linux-android
 
     - uses: actions/setup-java@v4
       with:
@@ -27,6 +27,21 @@ runs:
       shell: bash
       run: cargo install cargo-apk --locked
 
+    - name: Generate throwaway release keystore
+      shell: bash
+      # Unlike the `dev` profile, cargo-apk never auto-generates a keystore
+      # for `--release`, so building with it fails without one. This is a
+      # disposable per-run signing key (not a real release identity) - it
+      # only needs to make the APK installable, not Play Store ready.
+      run: |
+        keystore="$RUNNER_TEMP/android-release.keystore"
+        keytool -genkeypair -v -keystore "$keystore" -alias androidreleasekey \
+          -keyalg RSA -keysize 2048 -validity 10000 \
+          -storepass neothesia-ci -keypass neothesia-ci \
+          -dname "CN=Neothesia CI, OU=CI, O=Neothesia, C=US"
+        echo "CARGO_APK_RELEASE_KEYSTORE=$keystore" >> "$GITHUB_ENV"
+        echo "CARGO_APK_RELEASE_KEYSTORE_PASSWORD=neothesia-ci" >> "$GITHUB_ENV"
+
     - name: Build APK
       shell: bash
       working-directory: neothesia
@@ -34,10 +49,11 @@ runs:
       # desktop), and without it cargo-apk's artifact auto-selection picks
       # that bin instead of the `cdylib` lib Android needs, and panics.
       #
-      # `cargo apk build` self-signs with a debug keystore (auto-generated on
-      # first use) since we don't configure a release signing profile, so the
-      # resulting APK is sideload-only, not Play Store ready.
-      run: cargo apk build --lib
+      # `--release` + `strip = "default"` (in Cargo.toml) keep the APK from
+      # ballooning to hundreds of MB with unoptimized code and debug symbols.
+      # It's signed with the throwaway keystore generated above, so it's
+      # sideload-only, not Play Store ready.
+      run: cargo apk build --lib --release
 
     - name: Collect APK
       shell: bash
