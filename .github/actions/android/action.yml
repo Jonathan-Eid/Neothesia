@@ -32,10 +32,15 @@ runs:
       # `--lib` selects the `cdylib` target: the package also has a `[[bin]]`
       # (used on desktop) that cargo-ndk would otherwise try to build too.
       # Output goes straight into the Gradle project's jniLibs dir.
+      #
+      # --platform must be >= minSdk (26): cpal's Android backend links
+      # against libaaudio.so, which only exists in the NDK sysroot for API
+      # levels >= 26 (AAudio didn't exist before that).
       run: |
         cargo ndk \
           -t arm64-v8a \
           -o android/app/src/main/jniLibs \
+          --platform 26 \
           build --release --lib -p neothesia
 
     - uses: gradle/actions/setup-gradle@v4

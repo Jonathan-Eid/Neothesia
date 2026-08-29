@@ -33,10 +33,14 @@ runs:
     # not to represent what a user's arm64 release build looks like.
     - name: Build Rust cdylib (x86_64, debug)
       shell: bash
+      # --platform must be >= minSdk (26): cpal's Android backend links
+      # against libaaudio.so, which only exists in the NDK sysroot for API
+      # levels >= 26 (AAudio didn't exist before that).
       run: |
         cargo ndk \
           -t x86_64 \
           -o android/app/src/main/jniLibs \
+          --platform 26 \
           build --lib -p neothesia
 
     - uses: gradle/actions/setup-gradle@v4
