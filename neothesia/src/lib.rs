@@ -256,7 +256,33 @@ struct NeothesiaBootstrap(Option<Neothesia>, EventLoopProxy<NeothesiaEvent>);
 
 impl ApplicationHandler<NeothesiaEvent> for NeothesiaBootstrap {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        if self.0.is_some() {
+        if let Some(app) = self.0.as_mut() {
+            // On Android, `resumed` fires again every time the activity
+            // comes back to the foreground (not just at startup): the
+            // system destroys the native window - and our wgpu surface
+            // bound to it - whenever the activity is backgrounded (e.g. by
+            // the file picker), and hands back a *different* one on
+            // resume. Without recreating the surface here, every frame
+            // after that renders into a dead surface and the screen just
+            // stays black.
+            #[cfg(target_os = "android")]
+            {
+                let size = app.context.window.inner_size();
+                match app.context.gpu.recreate_surface(
+                    app.context.window.clone().into(),
+                    size.width,
+                    size.height,
+                ) {
+                    Ok(surface) => {
+                        app.surface = surface;
+                        app.context.resize();
+                        app.context.window.request_redraw();
+                    }
+                    Err(err) => log::error!("Failed to recreate surface on resume: {err}"),
+                }
+            }
+            #[cfg(not(target_os = "android"))]
+            let _ = app;
             return;
         }
 
@@ -336,9 +362,14 @@ impl ApplicationHandler<NeothesiaEvent> for NeothesiaBootstrap {
             app.window_event(event_loop, window_id, &event);
         };
 
-        // Touch event to mouse event translation (temporary until we get touch support)
+        // Touch is also forwarded as-is (not just translated below) so that
+        // multitouch-aware consumers - currently just the on-screen piano
+        // keyboard, keyed by `touch.id` - can tell separate fingers apart.
+        // Everything else only understands mouse events, so those still get
+        // a synthesized single pointer (whichever finger last moved/pressed)
+        // for general clicking (menus, buttons, etc).
         if let WindowEvent::Touch(touch) = &event {
-            // TODO: What to do with touch.id? We somehow want to ignore multitouch
+            on_event(WindowEvent::Touch(*touch));
 
             match touch.phase {
                 TouchPhase::Started => {

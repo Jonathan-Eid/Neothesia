@@ -203,13 +203,29 @@ impl MenuScene {
         let win_w = ctx.window_state.logical_size.width;
         let win_h = ctx.window_state.logical_size.height;
 
-        let w = 450.0;
-        let h = 80.0;
-        let gap = 10.0;
+        let mut w = 450.0;
+        let mut h = 80.0;
+        let mut gap = 10.0;
 
-        let logo_w = 650.0;
-        let logo_h = 118.0;
-        let post_logo_gap = 40.0;
+        let mut logo_w = 650.0;
+        let mut logo_h = 118.0;
+        let mut post_logo_gap = 40.0;
+
+        // On a short window (e.g. a landscape phone) this block doesn't
+        // otherwise fit below the y = win_h / 5 anchor, and there's no
+        // scrolling to fall back on, so it just runs off the bottom of the
+        // screen. Shrink everything uniformly so it always fits.
+        let content_h = logo_h + post_logo_gap + 3.0 * h + 2.0 * gap;
+        let available_h = win_h - win_h / 5.0;
+        let scale = (available_h / content_h).min(1.0);
+        if scale < 1.0 {
+            w *= scale;
+            h *= scale;
+            gap *= scale;
+            logo_w *= scale;
+            logo_h *= scale;
+            post_logo_gap *= scale;
+        }
 
         nuon::translate()
             .x(win_w / 2.0)

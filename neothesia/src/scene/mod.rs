@@ -100,51 +100,63 @@ pub fn handle_pc_keyboard_to_midi_event(ctx: &mut Context, event: &WindowEvent) 
         .ok();
 }
 
+// The synthesized single-pointer mouse events (see the touch translation in
+// lib.rs) are tracked under this pointer id, distinct from any real touch
+// id, so a real mouse click and a finger can never collide.
+const MOUSE_POINTER_ID: u64 = u64::MAX;
+
 #[derive(Default, Debug)]
 struct MouseToMidiEventState {
-    mouse_key_press: Option<u8>,
+    /// Pointer id (a real touch id, or `MOUSE_POINTER_ID`) -> the key it's
+    /// currently holding down. Tracking presses per pointer, rather than a
+    /// single shared one, is what lets multiple fingers hold down different
+    /// keys at once.
+    pressed: HashMap<u64, u8>,
 }
 
-fn handle_mouse_to_midi_event(
-    keyboard: &mut Keyboard,
-    state: &mut MouseToMidiEventState,
-    ctx: &Context,
-    event: &WindowEvent,
-) {
-    if !(event.left_mouse_pressed() || event.left_mouse_released() || event.cursor_moved()) {
-        return;
-    }
-
-    fn cancel_mouse_key_press(state: &mut MouseToMidiEventState, ctx: &Context) {
-        let Some(key) = state.mouse_key_press else {
-            return;
-        };
-
-        state.mouse_key_press = None;
-
-        let message = MidiMessage::NoteOff {
+fn send_note(ctx: &Context, key: u8, on: bool) {
+    let message = if on {
+        MidiMessage::NoteOn {
+            key: key.into(),
+            vel: 100.into(),
+        }
+    } else {
+        MidiMessage::NoteOff {
             key: key.into(),
             vel: 0.into(),
-        };
-        ctx.proxy
-            .send_event(NeothesiaEvent::MidiInput {
-                channel: 0,
-                message,
-            })
-            .ok();
-    }
+        }
+    };
+    ctx.proxy
+        .send_event(NeothesiaEvent::MidiInput {
+            channel: 0,
+            message,
+        })
+        .ok();
+}
 
+fn release_pointer(state: &mut MouseToMidiEventState, ctx: &Context, pointer_id: u64) {
+    if let Some(key) = state.pressed.remove(&pointer_id) {
+        send_note(ctx, key, false);
+    }
+}
+
+/// Hit-tests `pos` against the keyboard for one pointer (a touch, or the
+/// synthesized mouse pointer) and updates its NoteOn/NoteOff state to match.
+fn update_pointer(
+    keyboard: &Keyboard,
+    state: &mut MouseToMidiEventState,
+    ctx: &Context,
+    pointer_id: u64,
+    pos: nuon::Point,
+    is_down: bool,
+) {
     let bbox = nuon::Rect::new(
         (keyboard.pos().x, keyboard.pos().y).into(),
         (keyboard.layout().width, keyboard.layout().height).into(),
     );
-    let mouse_pos = nuon::Point::new(
-        ctx.window_state.cursor_logical_position.x,
-        ctx.window_state.cursor_logical_position.y,
-    );
 
-    if !bbox.contains(mouse_pos) || !ctx.window_state.left_mouse_btn {
-        cancel_mouse_key_press(state, ctx);
+    if !is_down || !bbox.contains(pos) {
+        release_pointer(state, ctx, pointer_id);
         return;
     }
 
@@ -160,34 +172,64 @@ fn handle_mouse_to_midi_event(
         .filter(|key| key.kind().is_neutral());
 
     for key in sharp.chain(neutral) {
-        let pos = nuon::Point::new(key.x(), keyboard.pos().y);
+        let key_pos = nuon::Point::new(key.x(), keyboard.pos().y);
         let size = nuon::Size::from(key.size());
-        let rect = nuon::Rect::new(pos, size);
-        if !rect.contains(mouse_pos) {
+        let rect = nuon::Rect::new(key_pos, size);
+        if !rect.contains(pos) {
             continue;
         }
 
         let key = keyboard.layout().range.start() + key.id() as u8;
 
-        if Some(key) == state.mouse_key_press {
+        if state.pressed.get(&pointer_id) == Some(&key) {
             return;
         }
 
-        cancel_mouse_key_press(state, ctx);
-        state.mouse_key_press = Some(key);
-
-        let message = MidiMessage::NoteOn {
-            key: key.into(),
-            vel: 100.into(),
-        };
-        ctx.proxy
-            .send_event(NeothesiaEvent::MidiInput {
-                channel: 0,
-                message,
-            })
-            .ok();
+        release_pointer(state, ctx, pointer_id);
+        state.pressed.insert(pointer_id, key);
+        send_note(ctx, key, true);
         return;
     }
+
+    // Pointer is over the keyboard's bounding box, but not over any key
+    // (e.g. the gap past the last key) - release whatever it was holding.
+    release_pointer(state, ctx, pointer_id);
+}
+
+fn handle_mouse_to_midi_event(
+    keyboard: &mut Keyboard,
+    state: &mut MouseToMidiEventState,
+    ctx: &Context,
+    event: &WindowEvent,
+) {
+    if let WindowEvent::Touch(touch) = event {
+        let pos: winit::dpi::LogicalPosition<f32> =
+            touch.location.to_logical(ctx.window_state.scale_factor);
+        let pos = nuon::Point::new(pos.x, pos.y);
+        let is_down = !matches!(
+            touch.phase,
+            winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled
+        );
+        update_pointer(keyboard, state, ctx, touch.id, pos, is_down);
+        return;
+    }
+
+    if !(event.left_mouse_pressed() || event.left_mouse_released() || event.cursor_moved()) {
+        return;
+    }
+
+    let mouse_pos = nuon::Point::new(
+        ctx.window_state.cursor_logical_position.x,
+        ctx.window_state.cursor_logical_position.y,
+    );
+    update_pointer(
+        keyboard,
+        state,
+        ctx,
+        MOUSE_POINTER_ID,
+        mouse_pos,
+        ctx.window_state.left_mouse_btn,
+    );
 }
 
 struct NuonLayer {
