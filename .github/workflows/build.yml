@@ -84,3 +84,9 @@ jobs:
       - name: ls
         run: ls -l neothesia-android.apk
 
+  smoke_test_android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/android-smoke-test
+

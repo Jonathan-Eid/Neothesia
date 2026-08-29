@@ -1,5 +1,7 @@
 #![allow(clippy::collapsible_match, clippy::single_match)]
 
+#[cfg(target_os = "android")]
+mod android;
 mod context;
 mod icons;
 mod input_manager;

@@ -518,9 +518,7 @@ pub fn open_soundfont_picker(data: &mut UiState) -> BoxFuture<MsgFn> {
 
 #[cfg(target_os = "android")]
 async fn open_sondfont_picker_fut() -> Option<PathBuf> {
-    // No file dialog available on Android yet (no SAF integration).
-    log::warn!("Picking a SoundFont file is not yet supported on Android");
-    None
+    crate::android::pick_file().await
 }
 
 #[cfg(not(target_os = "android"))]

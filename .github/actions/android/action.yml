@@ -23,44 +23,36 @@ runs:
         echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
         echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
 
-    - name: Install cargo-apk
+    - name: Install cargo-ndk
       shell: bash
-      run: cargo install cargo-apk --locked
+      run: cargo install cargo-ndk --locked
 
-    - name: Generate throwaway release keystore
+    - name: Build Rust cdylib (aarch64)
       shell: bash
-      # Unlike the `dev` profile, cargo-apk never auto-generates a keystore
-      # for `--release`, so building with it fails without one. This is a
-      # disposable per-run signing key (not a real release identity) - it
-      # only needs to make the APK installable, not Play Store ready.
+      # `--lib` selects the `cdylib` target: the package also has a `[[bin]]`
+      # (used on desktop) that cargo-ndk would otherwise try to build too.
+      # Output goes straight into the Gradle project's jniLibs dir.
       run: |
-        keystore="$RUNNER_TEMP/android-release.keystore"
-        keytool -genkeypair -v -keystore "$keystore" -alias androidreleasekey \
-          -keyalg RSA -keysize 2048 -validity 10000 \
-          -storepass neothesia-ci -keypass neothesia-ci \
-          -dname "CN=Neothesia CI, OU=CI, O=Neothesia, C=US"
-        echo "CARGO_APK_RELEASE_KEYSTORE=$keystore" >> "$GITHUB_ENV"
-        echo "CARGO_APK_RELEASE_KEYSTORE_PASSWORD=neothesia-ci" >> "$GITHUB_ENV"
+        cargo ndk \
+          -t arm64-v8a \
+          -o android/app/src/main/jniLibs \
+          build --release --lib -p neothesia
 
-    - name: Build APK
+    - uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: "8.7"
+
+    - name: Build APK with Gradle
       shell: bash
-      working-directory: neothesia
-      # `--lib` is required: the package also has a `[[bin]]` target (used on
-      # desktop), and without it cargo-apk's artifact auto-selection picks
-      # that bin instead of the `cdylib` lib Android needs, and panics.
-      #
-      # `--release` + `strip = "default"` (in Cargo.toml) keep the APK from
-      # ballooning to hundreds of MB with unoptimized code and debug symbols.
-      # It's signed with the throwaway keystore generated above, so it's
-      # sideload-only, not Play Store ready.
-      run: cargo apk build --lib --release
+      working-directory: android
+      run: gradle assembleRelease
 
     - name: Collect APK
       shell: bash
       run: |
-        apk_path=$(find . -name "*.apk" -path "*/apk/*" | head -n1)
+        apk_path=$(find android/app/build/outputs/apk -name "*.apk" | head -n1)
         if [ -z "$apk_path" ]; then
-          echo "No .apk file found under target/" >&2
+          echo "No .apk file found under android/app/build/outputs/apk" >&2
           exit 1
         fi
         echo "Found APK: $apk_path"

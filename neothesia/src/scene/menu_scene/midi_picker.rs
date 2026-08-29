@@ -21,9 +21,19 @@ pub fn open_midi_file_picker(data: &mut UiState) -> BoxFuture<MsgFn> {
 
 #[cfg(target_os = "android")]
 async fn open_midi_file_picker_fut() -> Option<(midi_file::MidiFile, PathBuf)> {
-    // No file dialog available on Android yet (no SAF integration).
-    log::warn!("Opening a song file is not yet supported on Android");
-    None
+    let path = crate::android::pick_file().await?;
+
+    let thread = crate::utils::task::thread::spawn("midi-loader".into(), move || {
+        let midi = midi_file::MidiFile::new(&path);
+
+        if let Err(e) = &midi {
+            log::error!("{e}");
+        }
+
+        midi.map(|midi| (midi, path)).ok()
+    });
+
+    thread.join().await.ok().flatten()
 }
 
 #[cfg(not(target_os = "android"))]
