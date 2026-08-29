@@ -112,6 +112,10 @@ struct MouseToMidiEventState {
     /// single shared one, is what lets multiple fingers hold down different
     /// keys at once.
     pressed: HashMap<u64, u8>,
+    /// How many fingers are currently down. While this is nonzero, the
+    /// synthesized single-pointer mouse events are ignored for key presses
+    /// (see `handle_mouse_to_midi_event`).
+    active_touches: u32,
 }
 
 fn send_note(ctx: &Context, key: u8, on: bool) {
@@ -203,14 +207,33 @@ fn handle_mouse_to_midi_event(
     event: &WindowEvent,
 ) {
     if let WindowEvent::Touch(touch) = event {
-        let pos: winit::dpi::LogicalPosition<f32> =
-            touch.location.to_logical(ctx.window_state.scale_factor);
-        let pos = nuon::Point::new(pos.x, pos.y);
         let is_down = !matches!(
             touch.phase,
             winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled
         );
+        match touch.phase {
+            winit::event::TouchPhase::Started => state.active_touches += 1,
+            winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
+                state.active_touches = state.active_touches.saturating_sub(1);
+            }
+            winit::event::TouchPhase::Moved => {}
+        }
+
+        let pos: winit::dpi::LogicalPosition<f32> =
+            touch.location.to_logical(ctx.window_state.scale_factor);
+        let pos = nuon::Point::new(pos.x, pos.y);
         update_pointer(keyboard, state, ctx, touch.id, pos, is_down);
+        return;
+    }
+
+    if state.active_touches > 0 {
+        // A real finger already owns keyboard interaction right now; ignore
+        // the synthesized single-pointer mouse events touch translation
+        // also emits (see lib.rs). Letting both drive key presses meant a
+        // second finger touching down moved that shared synthetic pointer
+        // onto its key, which sent a real NoteOff for whatever key the
+        // pointer had *previously* been over - cutting off the first
+        // finger's note the moment a second one touched down.
         return;
     }
 
