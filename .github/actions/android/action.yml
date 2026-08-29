@@ -1,0 +1,52 @@
+name: Android
+description: Build Android APK
+runs:
+  using: "composite"
+  steps:
+    - uses: Swatinem/rust-cache@v2
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android,armv7-linux-androideabi
+
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    - uses: android-actions/setup-android@v3
+
+    - name: Install Android NDK
+      shell: bash
+      run: |
+        yes | sdkmanager --licenses > /dev/null || true
+        sdkmanager --install "ndk;27.0.12077973"
+        echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
+        echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.0.12077973" >> "$GITHUB_ENV"
+
+    - name: Install cargo-apk
+      shell: bash
+      run: cargo install cargo-apk --locked
+
+    - name: Build APK
+      shell: bash
+      working-directory: neothesia
+      # `cargo apk build` self-signs with a debug keystore (auto-generated on
+      # first use) since we don't configure a release signing profile, so the
+      # resulting APK is sideload-only, not Play Store ready.
+      run: cargo apk build
+
+    - name: Collect APK
+      shell: bash
+      run: |
+        apk_path=$(find . -name "*.apk" -path "*/apk/*" | head -n1)
+        if [ -z "$apk_path" ]; then
+          echo "No .apk file found under target/" >&2
+          exit 1
+        fi
+        echo "Found APK: $apk_path"
+        cp "$apk_path" neothesia-android.apk
+
+    - uses: actions/upload-artifact@v6
+      with:
+        name: android-artifact
+        path: neothesia-android.apk

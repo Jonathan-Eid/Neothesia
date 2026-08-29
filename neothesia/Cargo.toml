@@ -34,7 +34,6 @@ cosmic-text.workspace = true
 bytes.workspace = true
 lilt.workspace = true
 winit.workspace = true
-rfd.workspace = true
 
 cpal = { workspace = true, optional = true }
 fluidlite = { workspace = true, optional = true }
@@ -45,8 +44,40 @@ puffin = { workspace = true, optional = true }
 puffin_http = { workspace = true, optional = true }
 piano-layout.workspace = true
 
+# Native file dialogs have no Android backend in this app's `rfd` version,
+# so it's a desktop-only dependency.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rfd.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+winit = { workspace = true, features = ["android-native-activity"] }
+# Must match the exact version winit 0.30 pins internally so that our
+# `android_activity::AndroidApp` and winit's are the same type.
+android-activity = { version = "=0.6.0", features = ["native-activity"] }
+android_logger = "0.14"
+
+[lib]
+name = "neothesia"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
 [[bin]]
 name = "neothesia"
+path = "src/main.rs"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 embed-resource.workspace = true
+
+# Consumed by `cargo apk build` (https://github.com/rust-mobile/cargo-apk) to
+# generate the AndroidManifest.xml and package the APK.
+[package.metadata.android]
+package = "com.github.polymeilex.neothesia"
+apk_name = "neothesia"
+build_targets = ["aarch64-linux-android", "armv7-linux-androideabi"]
+
+[package.metadata.android.sdk]
+min_sdk_version = 26
+target_sdk_version = 34
+
+[package.metadata.android.application]
+label = "Neothesia"
