@@ -152,6 +152,25 @@ impl MidiPlayer {
         self.send_midi_programs_for_timestamp(&time);
     }
 
+    /// Sounds a set of notes right now, without moving the playhead.
+    pub fn play_notes(&mut self, notes: &[super::analysis::SoundingNote]) {
+        for note in notes {
+            let channel = if self.separate_channels {
+                note.track_color_id as u8
+            } else {
+                note.channel
+            };
+
+            self.output.midi_event(
+                u4::new(channel),
+                MidiMessage::NoteOn {
+                    key: midi_file::midly::num::u7::new(note.key),
+                    vel: midi_file::midly::num::u7::new(90),
+                },
+            );
+        }
+    }
+
     pub fn rewind(&mut self, delta: i64) {
         let mut time = self.playback.time();
 
@@ -391,5 +410,13 @@ impl PlayAlong {
 
     pub fn are_required_keys_pressed(&self) -> bool {
         self.required_notes.is_empty()
+    }
+
+    /// Notes the player still has to press before the song can move on, low to
+    /// high. Empty whenever nothing is currently blocking playback.
+    pub fn required_notes(&self) -> Vec<u8> {
+        let mut notes: Vec<u8> = self.required_notes.keys().copied().collect();
+        notes.sort_unstable();
+        notes
     }
 }

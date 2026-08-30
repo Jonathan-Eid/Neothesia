@@ -177,6 +177,15 @@ pub struct AppearanceConfigV1 {
 
     #[serde(default)]
     pub chord_identifier: bool,
+
+    #[serde(default = "default_theory_panel")]
+    pub theory_panel: bool,
+
+    #[serde(default = "default_hide_muted_tracks")]
+    pub hide_muted_tracks: bool,
+
+    #[serde(default)]
+    pub sheet_music: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -193,6 +202,9 @@ impl Default for AppearanceConfig {
             horizontal_guidelines: default_horizontal_guidelines(),
             glow: default_glow(),
             chord_identifier: false,
+            theory_panel: default_theory_panel(),
+            hide_muted_tracks: default_hide_muted_tracks(),
+            sheet_music: false,
         })
     }
 }
@@ -234,6 +246,14 @@ fn default_animation_offset() -> f32 {
 
 fn default_note_labels() -> bool {
     false
+}
+
+fn default_theory_panel() -> bool {
+    true
+}
+
+fn default_hide_muted_tracks() -> bool {
+    true
 }
 
 fn default_audio_gain() -> f32 {

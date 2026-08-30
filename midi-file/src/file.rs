@@ -1,6 +1,9 @@
-use crate::{MidiTrack, program_track::ProgramTrack, tempo_track::TempoTrack};
+use crate::{
+    MidiTrack, program_track::ProgramTrack, signature_track::SignatureTrack,
+    tempo_track::TempoTrack,
+};
 use midly::{Format, Smf, Timing};
-use std::{fs, path::Path, sync::Arc};
+use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
 #[derive(Debug, Clone)]
 pub struct MidiFile {
@@ -9,6 +12,7 @@ pub struct MidiFile {
     pub tracks: Arc<[MidiTrack]>,
     pub program_track: ProgramTrack,
     pub tempo_track: TempoTrack,
+    pub signature_track: SignatureTrack,
     pub measures: Arc<[std::time::Duration]>,
 }
 
@@ -26,12 +30,71 @@ impl MidiFile {
             Err(_) => return Err(String::from("Could Not Open File")),
         };
 
-        let smf = match Smf::parse(&data) {
+        Self::from_bytes(name, &data)
+    }
+
+    /// Loads either a midi file, or a (compressed) MusicXML score.
+    pub fn from_bytes(name: impl Into<String>, data: &[u8]) -> Result<Self, String> {
+        let name = name.into();
+
+        if !data.starts_with(b"MThd") && crate::musicxml::looks_like_musicxml(data) {
+            return Self::from_musicxml(name, data);
+        }
+
+        let smf = match Smf::parse(data) {
             Ok(smf) => smf,
             Err(_) => return Err(String::from("Midi Parsing Error (midly lib)")),
         };
 
         Self::from_parsed_smf(name, &smf)
+    }
+
+    pub fn from_musicxml(name: impl Into<String>, data: &[u8]) -> Result<Self, String> {
+        let score = crate::musicxml::parse(data)?;
+
+        let mut file = Self::from_parsed_smf(name.into(), &score.smf)?;
+
+        // Written pitch (step/alter/octave) has no home in a midi event, so
+        // it travels as a side table keyed by the same coordinates the note
+        // was built from, and gets matched back onto it here.
+        let mut notation: HashMap<(usize, std::time::Duration, u8), crate::NotationInfo> =
+            HashMap::with_capacity(score.notation.len());
+        for entry in &score.notation {
+            let start = file.tempo_track.pulses_to_duration(entry.start);
+            notation.insert((entry.track, start, entry.key), entry.notation);
+        }
+
+        // Name and clef the tracks after the part and staff they came from,
+        // so a vocal line can be told apart from the piano in the track
+        // picker, and the sheet view knows which staff to draw them on.
+        if let Some(tracks) = Arc::get_mut(&mut file.tracks) {
+            for (track, (name, clef)) in tracks
+                .iter_mut()
+                .skip(1)
+                .zip(score.track_names.into_iter().zip(score.track_clefs))
+            {
+                track.name = name;
+                track.clef = clef;
+
+                if let Some(notes) = Arc::get_mut(&mut track.notes) {
+                    for note in notes.iter_mut() {
+                        note.notation = notation
+                            .get(&(track.track_id - 1, note.start, note.note))
+                            .copied();
+                    }
+                }
+            }
+        }
+
+        // MusicXML knows where the measures really are, no need to guess them
+        // from the time signature.
+        file.measures = score
+            .measures
+            .iter()
+            .map(|pulses| file.tempo_track.pulses_to_duration(*pulses))
+            .collect();
+
+        Ok(file)
     }
 
     pub fn from_smf(name: impl Into<String>, smf: &Smf<'_>) -> Result<Self, String> {
@@ -51,6 +114,7 @@ impl MidiFile {
         }
 
         let tempo_track = TempoTrack::build(&smf.tracks, u_per_quarter_note);
+        let signature_track = SignatureTrack::build(&smf.tracks, &tempo_track);
 
         let mut track_color_id = 0;
         let tracks: Vec<MidiTrack> = smf
@@ -79,16 +143,13 @@ impl MidiFile {
                     }
                 });
 
-            let mut masures = Vec::new();
-            let mut time = std::time::Duration::ZERO;
-            let mut id = 0;
-            while time <= last_note_end {
-                time = tempo_track.pulses_to_duration(id * u_per_quarter_note as u64 * 4);
-                masures.push(time);
-                id += 1;
-            }
+            let last_pulses = tempo_track.duration_to_pulses(last_note_end);
 
-            masures
+            signature_track
+                .measures(u_per_quarter_note, last_pulses)
+                .into_iter()
+                .map(|pulses| tempo_track.pulses_to_duration(pulses))
+                .collect::<Vec<_>>()
         };
 
         let program_track = ProgramTrack::new(&tracks);
@@ -99,6 +160,7 @@ impl MidiFile {
             tracks: tracks.into(),
             program_track,
             tempo_track,
+            signature_track,
             measures: measures.into(),
         })
     }

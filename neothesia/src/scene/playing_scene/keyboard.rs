@@ -110,6 +110,26 @@ impl Keyboard {
         self.renderer.reset_notes()
     }
 
+    /// Lights up the notes held at one point in time, replacing whatever the
+    /// file was showing before. Used when jumping straight to a timestamp.
+    pub fn press_notes(&mut self, config: &Config, notes: &[super::analysis::SoundingNote]) {
+        let range_start = self.range().start() as usize;
+
+        for note in notes {
+            if !self.range().contains(note.key) {
+                continue;
+            }
+
+            let schema = config.color_schema();
+            let color = &schema[note.track_color_id % schema.len().max(1)];
+
+            self.renderer.key_states_mut()[note.key as usize - range_start]
+                .pressed_by_file_on(color);
+        }
+
+        self.renderer.invalidate_cache();
+    }
+
     pub fn user_midi_event(&mut self, message: &MidiMessage) {
         let range_start = self.range().start() as usize;
 
@@ -132,8 +152,10 @@ impl Keyboard {
         let range_start = self.range().start() as usize;
 
         for e in events {
-            let track = &self.song_config.tracks[e.track_id];
-            if !track.visible {
+            if !self
+                .song_config
+                .is_active(e.track_id, config.hide_muted_tracks())
+            {
                 continue;
             }
 

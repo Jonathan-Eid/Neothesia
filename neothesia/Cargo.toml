@@ -24,6 +24,9 @@ neothesia-core.workspace = true
 neothesia-image.workspace = true
 midi-file.workspace = true
 midi-io.workspace = true
+music-theory.workspace = true
+song-analysis.workspace = true
+serde_json.workspace = true
 nuon.workspace = true
 futures-channel.workspace = true
 cosmic-text.workspace = true
@@ -31,7 +34,6 @@ cosmic-text.workspace = true
 bytes.workspace = true
 lilt.workspace = true
 winit.workspace = true
-rfd.workspace = true
 
 cpal = { workspace = true, optional = true }
 fluidlite = { workspace = true, optional = true }
@@ -42,8 +44,28 @@ puffin = { workspace = true, optional = true }
 puffin_http = { workspace = true, optional = true }
 piano-layout.workspace = true
 
+# Native file dialogs have no Android backend in this app's `rfd` version,
+# so it's a desktop-only dependency.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rfd.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+winit = { workspace = true, features = ["android-native-activity"] }
+# Must match the exact version winit 0.30 pins internally so that our
+# `android_activity::AndroidApp` and winit's are the same type.
+android-activity = { version = "=0.6.0", features = ["native-activity"] }
+android_logger = "0.14"
+# For calling back into the Kotlin MainActivity (file picker) and receiving
+# its JNI callbacks. Packaging is a Gradle project (android/) with a custom
+# NativeActivity subclass, built via cargo-ndk, not cargo-apk: cargo-apk
+# can't bundle the Kotlin glue a real Storage Access Framework file picker
+# needs (no onActivityResult hook without a custom Activity).
+jni = "0.21"
+ndk-context.workspace = true
+
 [[bin]]
 name = "neothesia"
+path = "src/main.rs"
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 embed-resource.workspace = true

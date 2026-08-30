@@ -1,7 +1,7 @@
-use midly::{MidiMessage, TrackEvent, TrackEventKind, num::u4};
+use midly::{MetaMessage, MidiMessage, TrackEvent, TrackEventKind, num::u4};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use crate::tempo_track::TempoTrack;
+use crate::{Clef, NotationInfo, tempo_track::TempoTrack};
 
 #[derive(Debug, Clone)]
 pub struct MidiEvent {
@@ -29,10 +29,18 @@ pub struct MidiNote {
     pub channel: u8,
     pub track_id: usize,
     pub track_color_id: usize,
+
+    /// The pitch as written in the score, when this note came from a
+    /// MusicXML file. `None` for a plain midi file, or a musicxml note this
+    /// couldn't be matched back to (should not happen in practice).
+    pub notation: Option<NotationInfo>,
 }
 
 #[derive(Debug, Clone)]
 pub struct MidiTrack {
+    /// Name the file gives this track, if any.
+    pub name: Option<String>,
+
     // Translated notes with calculated timings
     pub notes: Arc<[MidiNote]>,
 
@@ -44,6 +52,9 @@ pub struct MidiTrack {
     pub programs: Arc<[ProgramEvent]>,
     pub has_drums: bool,
     pub has_other_than_drums: bool,
+
+    /// Which staff this track was written on, for a MusicXML derived file.
+    pub clef: Option<Clef>,
 }
 
 impl MidiTrack {
@@ -65,6 +76,7 @@ impl MidiTrack {
         ) = build(track_id, track_color_id, tempo_track, track_events);
 
         Self {
+            name: track_name(track_events),
             track_id,
             track_color_id,
             notes: notes.into(),
@@ -72,6 +84,7 @@ impl MidiTrack {
             programs: programs.into(),
             has_drums,
             has_other_than_drums,
+            clef: None,
         }
     }
 }
@@ -123,6 +136,7 @@ impl EventsBuilder {
                 channel: active.channel,
                 track_id,
                 track_color_id,
+                notation: None,
             };
 
             self.notes.push(note);
@@ -185,6 +199,31 @@ impl EventsBuilder {
             track_color_id,
         }
     }
+}
+
+/// Name of a track, as written in its meta events.
+fn track_name(track_events: &[TrackEvent]) -> Option<String> {
+    let mut instrument = None;
+
+    for event in track_events.iter() {
+        match event.kind {
+            TrackEventKind::Meta(MetaMessage::TrackName(name)) => {
+                let name = String::from_utf8_lossy(name).trim().to_string();
+                if !name.is_empty() {
+                    return Some(name);
+                }
+            }
+            TrackEventKind::Meta(MetaMessage::InstrumentName(name)) => {
+                let name = String::from_utf8_lossy(name).trim().to_string();
+                if !name.is_empty() {
+                    instrument.get_or_insert(name);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    instrument
 }
 
 fn build(

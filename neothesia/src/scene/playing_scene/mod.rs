@@ -16,6 +16,13 @@ use crate::{
     song::Song, utils::window::WinitEvent,
 };
 
+mod analysis;
+use analysis::{Hand, Snapshot, SongAnalysis};
+
+mod theory_panel;
+
+mod sheet_music;
+
 mod keyboard;
 pub use keyboard::Keyboard;
 
@@ -50,7 +57,12 @@ pub struct PlayingScene {
     nuon: nuon::Ui,
     mouse_to_midi_state: MouseToMidiEventState,
 
-    deduced_chord_name: String,
+    analysis: SongAnalysis,
+    snapshot: Option<Snapshot>,
+    /// Whether muted tracks are currently kept out of the performance.
+    hide_muted: bool,
+    /// Stepping through the song by hand, like a debugger.
+    stepping: bool,
 
     top_bar: TopBar,
 }
@@ -69,13 +81,8 @@ impl PlayingScene {
             song.file.measures.clone(),
         );
 
-        let hidden_tracks: Vec<usize> = song
-            .config
-            .tracks
-            .iter()
-            .filter(|t| !t.visible)
-            .map(|t| t.track_id)
-            .collect();
+        let hide_muted = ctx.config.hide_muted_tracks();
+        let hidden_tracks = song.config.hidden_tracks(hide_muted);
 
         let mut waterfall = WaterfallRenderer::new(
             &ctx.gpu,
@@ -93,6 +100,8 @@ impl PlayingScene {
             waterfall.notes(),
             ctx.text_renderer_factory.new_renderer(),
         ));
+
+        let analysis = SongAnalysis::new(&song, hide_muted);
 
         let player = MidiPlayer::new(
             ctx.output_manager.connection().clone(),
@@ -128,7 +137,11 @@ impl PlayingScene {
 
             nuon: nuon::Ui::new(),
             mouse_to_midi_state: MouseToMidiEventState::default(),
-            deduced_chord_name: String::new(),
+
+            analysis,
+            snapshot: None,
+            stepping: false,
+            hide_muted,
 
             top_bar: TopBar::new(),
         }
@@ -160,22 +173,105 @@ impl PlayingScene {
         }
     }
 
-    fn update_chord_identifier(&mut self, enabled: bool) {
-        if !enabled {
+    /// Muting a track can take it out of the waterfall and the analysis, which
+    /// means rebuilding both when the setting is flipped mid song.
+    fn apply_muted_tracks(&mut self, ctx: &mut Context) {
+        if self.hide_muted == ctx.config.hide_muted_tracks() {
             return;
         }
 
-        let start = self.keyboard.layout().range.start();
-        let notes = self
-            .keyboard
-            .key_states()
-            .iter()
-            .enumerate()
-            .filter(|(_, state)| state.pressed_by_user().is_some())
-            .map(|(id, _)| id as u8 + start)
-            .collect::<Vec<_>>();
+        self.hide_muted = ctx.config.hide_muted_tracks();
 
-        self.deduced_chord_name = super::freeplay::chords::deduce_name(&notes).unwrap_or_default();
+        let song = self.player.song().clone();
+        let hidden_tracks = song.config.hidden_tracks(self.hide_muted);
+
+        self.waterfall = WaterfallRenderer::new(
+            &ctx.gpu,
+            &song.file.tracks,
+            &hidden_tracks,
+            &ctx.config,
+            &ctx.transform,
+            self.keyboard.layout().clone(),
+        );
+        self.waterfall.update(self.player.time_without_lead_in());
+
+        self.note_labels = ctx.config.note_labels().then_some(NoteLabels::new(
+            *self.keyboard.pos(),
+            self.waterfall.notes(),
+            ctx.text_renderer_factory.new_renderer(),
+        ));
+
+        self.analysis = SongAnalysis::new(&song, self.hide_muted);
+        self.keyboard.reset_notes();
+    }
+
+    /// Time in the song itself, with the lead in taken off.
+    fn song_time(&self) -> Duration {
+        self.player.time().saturating_sub(*self.player.leed_in())
+    }
+
+    fn update_analysis(&mut self, enabled: bool) {
+        if !enabled {
+            self.snapshot = None;
+            return;
+        }
+
+        let time = self.song_time();
+        self.snapshot = Some(self.analysis.analyse(self.player.song(), time));
+    }
+
+    /// Jumps to a point in the song and sounds whatever is held there, so that
+    /// a paused player still shows and plays the chord under the playhead.
+    fn seek(&mut self, ctx: &Context, song_time: Duration) {
+        let player_time = song_time + *self.player.leed_in();
+        self.player.set_time(player_time);
+
+        let notes = self.analysis.notes_at(self.player.song(), song_time);
+
+        self.player.play_notes(&notes);
+        self.keyboard.reset_notes();
+        self.keyboard.press_notes(&ctx.config, &notes);
+    }
+
+    /// One step of the song, either hand or both, forwards or backwards.
+    fn step(&mut self, ctx: &Context, hand: Option<Hand>, forward: bool) {
+        self.player.pause();
+        self.stepping = true;
+
+        let now = self.song_time();
+        let target = if forward {
+            self.analysis.next_onset(hand, now)
+        } else {
+            self.analysis.previous_onset(hand, now)
+        };
+
+        let Some(target) = target else {
+            return;
+        };
+
+        self.seek(ctx, target);
+    }
+
+    fn handle_step_input(&mut self, ctx: &mut Context, event: &WindowEvent) {
+        // Letters and brackets are taken by the play along keyboard, so
+        // stepping lives on the keys next to them.
+        let step = match event.character_released() {
+            Some(".") => Some((None, true)),
+            Some(",") => Some((None, false)),
+            Some("k") => Some((Some(Hand::Left), true)),
+            Some("K") => Some((Some(Hand::Left), false)),
+            Some("l") => Some((Some(Hand::Right), true)),
+            Some("L") => Some((Some(Hand::Right), false)),
+            Some("a") => {
+                ctx.config.set_theory_panel(!ctx.config.theory_panel());
+                None
+            }
+            _ => None,
+        };
+
+        if let Some((hand, forward)) = step {
+            self.step(ctx, hand, forward);
+        }
     }
 
     #[profiling::function]
@@ -216,6 +312,7 @@ impl Scene for PlayingScene {
         self.quad_renderer_bg.clear();
         self.quad_renderer_fg.clear();
 
+        self.apply_muted_tracks(ctx);
         self.rewind_controller.update(&mut self.player, ctx, delta);
         self.toast_manager.update(&mut self.text_renderer);
 
@@ -230,7 +327,7 @@ impl Scene for PlayingScene {
         );
         self.keyboard
             .update(&mut self.quad_renderer_fg, &mut self.text_renderer);
-        self.update_chord_identifier(ctx.config.chord_identifier());
+        self.update_analysis(ctx.config.theory_panel() || ctx.config.chord_identifier());
         if let Some(note_labels) = self.note_labels.as_mut() {
             note_labels.update(
                 ctx.window_state.physical_size,
@@ -245,14 +342,52 @@ impl Scene for PlayingScene {
 
         TopBar::update(self, ctx);
 
-        if ctx.config.chord_identifier() {
-            nuon::label()
-                .text(&self.deduced_chord_name)
-                .font_size(25.0)
-                .y(self.keyboard.pos().y - 35.0)
-                .height(25.0)
-                .width(ctx.window_state.logical_size.width)
-                .build(&mut self.nuon);
+        // Outstanding notes only count as "the thing blocking us" while the
+        // song is actually trying to move forward on its own.
+        let waiting_for = if self.stepping || self.player.is_paused() {
+            Vec::new()
+        } else {
+            self.player.play_along().required_notes()
+        };
+
+        let mut overlay_bottom = self.keyboard.pos().y;
+
+        if ctx.config.sheet_music() && sheet_music::is_available(self.player.song()) {
+            let song_time = self.song_time();
+            let height = sheet_music::height(self.player.song());
+            let y = overlay_bottom - height - 12.0;
+            sheet_music::build(
+                &mut self.nuon,
+                ctx,
+                self.player.song(),
+                song_time,
+                ctx.window_state.logical_size.width,
+                y,
+            );
+            overlay_bottom = y;
+        }
+
+        if let Some(snapshot) = self.snapshot.as_ref() {
+            if ctx.config.theory_panel() {
+                theory_panel::build(
+                    &mut self.nuon,
+                    ctx,
+                    snapshot,
+                    self.stepping,
+                    &waiting_for,
+                    snapshot.key.prefers_flats(),
+                    ctx.window_state.logical_size.width,
+                    overlay_bottom - theory_panel::HEIGHT - 12.0,
+                );
+            } else if ctx.config.chord_identifier() {
+                nuon::label()
+                    .text(snapshot.symbol())
+                    .font_size(25.0)
+                    .y(overlay_bottom - 35.0)
+                    .height(25.0)
+                    .width(ctx.window_state.logical_size.width)
+                    .build(&mut self.nuon);
+            }
         }
 
         super::render_nuon(&mut self.nuon, &mut self.nuon_renderer, ctx);
@@ -314,8 +449,11 @@ impl Scene for PlayingScene {
         }
 
         if event.key_released(Key::Named(NamedKey::Space)) {
+            self.stepping = false;
             self.player.pause_resume();
         }
+
+        self.handle_step_input(ctx, event);
 
         handle_settings_input(ctx, &mut self.toast_manager, &mut self.waterfall, event);
         super::handle_pc_keyboard_to_midi_event(ctx, event);

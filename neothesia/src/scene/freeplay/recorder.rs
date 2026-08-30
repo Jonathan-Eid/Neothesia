@@ -486,6 +486,14 @@ fn handle_record_click(scene: &mut FreeplayScene, ctx: &Context) {
     scene.recorder.start();
 }
 
+#[cfg(target_os = "android")]
+fn handle_save_click(scene: &mut FreeplayScene, _ctx: &Context) {
+    // No file dialog available on Android yet (no SAF integration).
+    log::warn!("Saving a recording is not yet supported on Android");
+    scene.recorder_status = RecorderStatus::Error(RecorderError::Write);
+}
+
+#[cfg(not(target_os = "android"))]
 fn handle_save_click(scene: &mut FreeplayScene, ctx: &Context) {
     let mut dialog = rfd::AsyncFileDialog::new()
         .add_filter("midi", &["mid", "midi"])

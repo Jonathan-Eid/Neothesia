@@ -243,6 +243,25 @@ impl TopBar {
                         ui,
                         |ui, rows, _| {
                             if nuon::settings_row_toggler()
+                                .title("Theory Panel")
+                                .subtitle("Chords, key, meter and step through")
+                                .value(ctx.config.theory_panel())
+                                .build(ui, rows)
+                            {
+                                ctx.config.set_theory_panel(!ctx.config.theory_panel());
+                            }
+
+                            if nuon::settings_row_toggler()
+                                .title("Hide Muted Tracks")
+                                .subtitle("Keep muted tracks out of the waterfall and analysis")
+                                .value(ctx.config.hide_muted_tracks())
+                                .build(ui, rows)
+                            {
+                                ctx.config
+                                    .set_hide_muted_tracks(!ctx.config.hide_muted_tracks());
+                            }
+
+                            if nuon::settings_row_toggler()
                                 .title("Chord Identifier")
                                 .subtitle("Display chord above keyboard")
                                 .value(ctx.config.chord_identifier())
@@ -250,6 +269,15 @@ impl TopBar {
                             {
                                 ctx.config
                                     .set_chord_identifier(!ctx.config.chord_identifier());
+                            }
+
+                            if nuon::settings_row_toggler()
+                                .title("Sheet Music")
+                                .subtitle("Staff notation, when the file has it")
+                                .value(ctx.config.sheet_music())
+                                .build(ui, rows)
+                            {
+                                ctx.config.set_sheet_music(!ctx.config.sheet_music());
                             }
                         },
                     );

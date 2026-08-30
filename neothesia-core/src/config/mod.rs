@@ -164,6 +164,30 @@ impl Config {
         self.appearance.chord_identifier = chord_identifier;
     }
 
+    pub fn theory_panel(&self) -> bool {
+        self.appearance.theory_panel
+    }
+
+    pub fn set_theory_panel(&mut self, theory_panel: bool) {
+        self.appearance.theory_panel = theory_panel;
+    }
+
+    pub fn sheet_music(&self) -> bool {
+        self.appearance.sheet_music
+    }
+
+    pub fn set_sheet_music(&mut self, sheet_music: bool) {
+        self.appearance.sheet_music = sheet_music;
+    }
+
+    pub fn hide_muted_tracks(&self) -> bool {
+        self.appearance.hide_muted_tracks
+    }
+
+    pub fn set_hide_muted_tracks(&mut self, hide: bool) {
+        self.appearance.hide_muted_tracks = hide;
+    }
+
     pub fn last_opened_song(&self) -> Option<&PathBuf> {
         self.history.last_opened_song.as_ref()
     }

@@ -1,0 +1,12 @@
+[package]
+name = "mxl-analyze"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+midi-file.workspace = true
+music-theory.workspace = true
+song-analysis.workspace = true
+clap.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

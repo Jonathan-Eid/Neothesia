@@ -4,27 +4,37 @@ members = [
   "wgpu-jumpstart",
   "ffmpeg-encoder",
   "neothesia",
+  "neothesia-android",
   "neothesia-ai",
   "neothesia-cli",
   "neothesia-core",
   "neothesia-image",
   "midi-file",
   "midi-io",
+  "music-theory",
+  "mxl-analyze",
   "nuon",
+  "song-analysis",
 ]
 
 default-members = ["neothesia"]
 resolver = "2"
 
+[profile.release]
+strip = true
+
 [workspace.package]
 edition = "2024"
 
 [workspace.dependencies]
+neothesia = { path = "./neothesia" }
 wgpu-jumpstart = { path = "./wgpu-jumpstart" }
 neothesia-core = { path = "./neothesia-core" }
 neothesia-image = { path = "./neothesia-image" }
 midi-file = { path = "./midi-file" }
 midi-io = { path = "./midi-io" }
+music-theory = { path = "./music-theory" }
+song-analysis = { path = "./song-analysis" }
 piano-layout = { path = "./piano-layout" }
 ffmpeg-encoder = { path = "./ffmpeg-encoder" }
 nuon = { path = "./nuon" }
@@ -53,6 +63,7 @@ fluidlite = { version = "0.2", features = ["builtin"] }
 oxisynth = "0.1.0"
 embed-resource = "3.0"
 midir = "0.11"
+ndk-context = "0.1"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSBundle", "NSString"] }
 ron = "0.12"
 serde = "1"

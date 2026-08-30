@@ -6,6 +6,8 @@ edition.workspace = true
 
 [dependencies]
 midly.workspace = true
+roxmltree = "0.21.1"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 midi-io.workspace = true

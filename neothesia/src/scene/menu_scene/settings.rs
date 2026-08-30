@@ -516,6 +516,12 @@ pub fn open_soundfont_picker(data: &mut UiState) -> BoxFuture<MsgFn> {
     })
 }
 
+#[cfg(target_os = "android")]
+async fn open_sondfont_picker_fut() -> Option<PathBuf> {
+    crate::android::pick_file().await
+}
+
+#[cfg(not(target_os = "android"))]
 async fn open_sondfont_picker_fut() -> Option<PathBuf> {
     let file = rfd::AsyncFileDialog::new()
         .add_filter("SoundFont2", &["sf2"])

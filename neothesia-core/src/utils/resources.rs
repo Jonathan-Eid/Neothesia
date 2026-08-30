@@ -14,8 +14,43 @@ fn xdg_config() -> Option<PathBuf> {
         .or_else(|| home().map(|h| h.join(".config").join("neothesia")))
 }
 
+/// The app has no filesystem-visible install prefix on Android, and no `$HOME`
+/// either. Instead we're handed a private per-app data directory by
+/// `android_main` (from `AndroidApp::internal_data_path()`) before anything
+/// else runs, and everything that would otherwise live under `$XDG_CONFIG_HOME`
+/// or next to the executable is stored there.
+#[cfg(target_os = "android")]
+static ANDROID_FILES_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "android")]
+pub fn set_android_files_dir(path: PathBuf) {
+    let _ = ANDROID_FILES_DIR.set(path);
+}
+
+#[cfg(target_os = "android")]
+fn android_files_dir() -> Option<PathBuf> {
+    ANDROID_FILES_DIR.get().cloned()
+}
+
 pub fn default_sf2() -> Option<PathBuf> {
-    #[cfg(all(target_family = "unix", not(target_os = "macos")))]
+    #[cfg(target_os = "android")]
+    {
+        let dir = android_files_dir()?;
+        let path = dir.join("default.sf2");
+
+        if !path.exists() {
+            let bytes = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../default.sf2"));
+            std::fs::write(&path, bytes).ok()?;
+        }
+
+        return Some(path);
+    }
+
+    #[cfg(all(
+        target_family = "unix",
+        not(target_os = "macos"),
+        not(target_os = "android")
+    ))]
     {
         if let Some(path) = xdg_config().map(|p| p.join("default.sf2"))
             && path.exists()
@@ -55,7 +90,14 @@ pub fn default_sf2() -> Option<PathBuf> {
 }
 
 pub fn settings_ron() -> Option<PathBuf> {
-    #[cfg(all(target_family = "unix", not(target_os = "macos")))]
+    #[cfg(target_os = "android")]
+    return android_files_dir().map(|p| p.join("settings.ron"));
+
+    #[cfg(all(
+        target_family = "unix",
+        not(target_os = "macos"),
+        not(target_os = "android")
+    ))]
     return xdg_config().map(|p| p.join("settings.ron"));
 
     #[cfg(target_os = "windows")]

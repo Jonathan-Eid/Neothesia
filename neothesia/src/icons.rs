@@ -59,3 +59,66 @@ pub fn record_stop_icon() -> &'static str {
 pub fn save_icon() -> &'static str {
     "\u{f7D9}"
 }
+
+/// SMuFL glyphs (Leland font) used by the sheet music view.
+pub mod sheet {
+    pub fn g_clef() -> &'static str {
+        "\u{E050}"
+    }
+
+    pub fn f_clef() -> &'static str {
+        "\u{E062}"
+    }
+
+    pub fn c_clef() -> &'static str {
+        "\u{E05C}"
+    }
+
+    pub fn accidental_flat() -> &'static str {
+        "\u{E260}"
+    }
+
+    pub fn accidental_natural() -> &'static str {
+        "\u{E261}"
+    }
+
+    pub fn accidental_sharp() -> &'static str {
+        "\u{E262}"
+    }
+
+    pub fn notehead_whole() -> &'static str {
+        "\u{E0A2}"
+    }
+
+    pub fn notehead_half() -> &'static str {
+        "\u{E0A3}"
+    }
+
+    pub fn notehead_black() -> &'static str {
+        "\u{E0A4}"
+    }
+
+    pub fn flag_8th_up() -> &'static str {
+        "\u{E240}"
+    }
+
+    pub fn flag_8th_down() -> &'static str {
+        "\u{E241}"
+    }
+
+    pub fn flag_16th_up() -> &'static str {
+        "\u{E242}"
+    }
+
+    pub fn flag_16th_down() -> &'static str {
+        "\u{E243}"
+    }
+
+    pub fn flag_32nd_up() -> &'static str {
+        "\u{E244}"
+    }
+
+    pub fn flag_32nd_down() -> &'static str {
+        "\u{E245}"
+    }
+}
