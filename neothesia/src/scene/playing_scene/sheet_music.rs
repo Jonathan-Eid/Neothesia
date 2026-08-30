@@ -1,30 +1,32 @@
-//! A scrolling staff notation view, built from the pitch spelling MusicXML
-//! files keep and plain midi files don't - see [`midi_file::NotationPitch`].
+//! A one-bar-at-a-time staff notation view, built from the pitch spelling
+//! MusicXML files keep and plain midi files don't - see
+//! [`midi_file::NotationPitch`].
 //!
-//! Notes travel right to left as the song plays, crossing a fixed playhead
-//! near the left edge, one staff per track that has a clef.
+//! Unlike the waterfall, this doesn't scroll: the whole current measure is
+//! laid out at once, a beat column lights up as the song reaches it, and the
+//! view jumps to the next measure only once the current one is done - meant
+//! to be readable at a glance, not tracked continuously.
 
-use midi_file::{Clef, MidiTrack, NotationPitch};
+use midi_file::{Clef, MidiFile, MidiTrack, NotationPitch};
 use nuon::Ui;
 use std::time::Duration;
 
 use crate::{context::Context, icons::sheet, song::Song};
 
-const STAFF_LINE_GAP: f32 = 8.0;
+const STAFF_LINE_GAP: f32 = 9.0;
 /// Vertical distance between adjacent diatonic steps - half a line gap,
 /// since a line and the space above it are one step apart.
 const STEP: f32 = STAFF_LINE_GAP / 2.0;
-const STAFF_GAP: f32 = 46.0;
+const STAFF_GAP: f32 = 48.0;
 const PAD: f32 = 18.0;
 const CLEF_W: f32 = 34.0;
-/// How far right of the playhead the view looks, in seconds.
-const LOOKAHEAD: f32 = 4.0;
-/// How long a note lingers left of the playhead after it starts.
-const LOOKBACK: f32 = 0.5;
+const HEADER_H: f32 = 22.0;
 
 const LINE_COLOR: [u8; 4] = [150, 148, 160, 200];
-const NOTE_COLOR: [u8; 3] = [235, 235, 240];
-const PLAYHEAD_COLOR: [u8; 4] = [255, 196, 84, 220];
+const BEAT_LINE_COLOR: [u8; 4] = [90, 88, 100, 120];
+const DIM_NOTE_COLOR: [u8; 4] = [150, 148, 160, 180];
+const BEAT_HIGHLIGHT: [u8; 4] = [255, 196, 84, 40];
+const HEADER_COLOR: [u8; 3] = [180, 178, 190];
 
 /// Whether `song` has any track worth drawing a staff for.
 pub fn is_available(song: &Song) -> bool {
@@ -40,7 +42,24 @@ pub fn height(song: &Song) -> f32 {
         .count()
         .max(1) as f32;
 
-    PAD * 2.0 + staves * (STAFF_LINE_GAP * 4.0) + (staves - 1.0).max(0.0) * STAFF_GAP
+    HEADER_H + PAD * 2.0 + staves * (STAFF_LINE_GAP * 4.0) + (staves - 1.0).max(0.0) * STAFF_GAP
+}
+
+/// Index of the measure `at` falls in, and its [start, end) bounds.
+fn current_measure(file: &MidiFile, at: Duration) -> (usize, Duration, Duration) {
+    let measures = &file.measures;
+    let idx = match measures.binary_search(&at) {
+        Ok(idx) => idx,
+        Err(idx) => idx.saturating_sub(1),
+    };
+
+    let start = measures.get(idx).copied().unwrap_or(Duration::ZERO);
+    let end = measures
+        .get(idx + 1)
+        .copied()
+        .unwrap_or(start + Duration::from_secs(4));
+
+    (idx, start, end)
 }
 
 pub fn build(ui: &mut Ui, ctx: &Context, song: &Song, song_time: Duration, width: f32, y: f32) {
@@ -56,9 +75,20 @@ pub fn build(ui: &mut Ui, ctx: &Context, song: &Song, song_time: Duration, width
     }
 
     let panel_h = height(song);
-    let now = song_time.as_secs_f32();
-    let playhead_x = PAD + CLEF_W + 10.0;
-    let px_per_sec = (width - playhead_x - PAD) / LOOKAHEAD;
+    let (measure_idx, measure_start, measure_end) = current_measure(&song.file, song_time);
+    let bar_len = (measure_end - measure_start).as_secs_f32().max(0.001);
+    let progress = (song_time.saturating_sub(measure_start)).as_secs_f32() / bar_len;
+
+    let beats = song
+        .file
+        .signature_track
+        .time_signature_at(&measure_start)
+        .numerator
+        .max(1);
+    let current_beat = ((progress * beats as f32) as u32).min(beats as u32 - 1);
+
+    let content_x0 = PAD + CLEF_W + 14.0;
+    let content_x1 = width - PAD;
 
     nuon::translate().x(0.0).y(y).build(ui, |ui| {
         nuon::quad()
@@ -67,23 +97,36 @@ pub fn build(ui: &mut Ui, ctx: &Context, song: &Song, song_time: Duration, width
             .border_radius([12.0; 4])
             .build(ui);
 
-        nuon::quad()
-            .x(playhead_x)
-            .y(PAD - 4.0)
-            .width(2.0)
-            .height(panel_h - PAD * 2.0 + 8.0)
-            .color(PLAYHEAD_COLOR)
+        nuon::label()
+            .text(format!("Measure {}", measure_idx + 1))
+            .font_size(13.0)
+            .bold(true)
+            .color(HEADER_COLOR)
+            .x(PAD)
+            .y(4.0)
+            .width(200.0)
+            .height(HEADER_H)
             .build(ui);
 
-        let key = song.file.signature_track.key_signature_at(&song_time);
+        // The beat currently playing, as one lit column behind every staff.
+        let beat_w = (content_x1 - content_x0) / beats as f32;
+        nuon::quad()
+            .x(content_x0 + current_beat as f32 * beat_w)
+            .y(HEADER_H)
+            .width(beat_w)
+            .height(panel_h - HEADER_H)
+            .color(BEAT_HIGHLIGHT)
+            .build(ui);
+
+        let key = song.file.signature_track.key_signature_at(&measure_start);
         let note_color = ctx
             .config
             .color_schema()
             .first()
             .map(|c| [c.base.0, c.base.1, c.base.2])
-            .unwrap_or(NOTE_COLOR);
+            .unwrap_or([235, 235, 240]);
 
-        let mut staff_y = PAD;
+        let mut staff_y = HEADER_H + PAD;
         for track in staves {
             let clef = track.clef.unwrap();
             staff(
@@ -92,9 +135,12 @@ pub fn build(ui: &mut Ui, ctx: &Context, song: &Song, song_time: Duration, width
                 clef,
                 note_color,
                 key.map(|k| k.fifths).unwrap_or(0),
-                now,
-                playhead_x,
-                px_per_sec,
+                song_time,
+                measure_start,
+                measure_end,
+                content_x0,
+                content_x1,
+                beats,
                 width,
                 staff_y,
             );
@@ -110,12 +156,17 @@ fn staff(
     clef: Clef,
     note_color: [u8; 3],
     fifths: i8,
-    now: f32,
-    playhead_x: f32,
-    px_per_sec: f32,
+    song_time: Duration,
+    measure_start: Duration,
+    measure_end: Duration,
+    content_x0: f32,
+    content_x1: f32,
+    beats: u8,
     width: f32,
     top_y: f32,
 ) {
+    let bar_len = (measure_end - measure_start).as_secs_f32().max(0.001);
+
     nuon::translate().y(top_y).build(ui, |ui| {
         // The five lines, top to bottom.
         for line in 0..5 {
@@ -125,6 +176,19 @@ fn staff(
                 .x(PAD)
                 .height(1.0)
                 .color(LINE_COLOR)
+                .build(ui);
+        }
+
+        // Faint dividers between beats, so the highlighted one reads as a
+        // position within the bar rather than a floating box.
+        for beat in 1..beats {
+            let x = content_x0 + (content_x1 - content_x0) * (beat as f32 / beats as f32);
+            nuon::quad()
+                .x(x)
+                .y(-4.0)
+                .width(1.0)
+                .height(STAFF_LINE_GAP * 4.0 + 8.0)
+                .color(BEAT_LINE_COLOR)
                 .build(ui);
         }
 
@@ -161,14 +225,21 @@ fn staff(
                 continue;
             };
 
-            let start = note.start.as_secs_f32();
-            let dt = start - now;
-            if !(-LOOKBACK..=LOOKAHEAD).contains(&dt) {
+            if note.start < measure_start || note.start >= measure_end {
                 continue;
             }
 
-            let x = playhead_x + dt * px_per_sec;
-            notehead(ui, clef, pitch, x, note_color);
+            let fraction = (note.start - measure_start).as_secs_f32() / bar_len;
+            let x = content_x0 + fraction * (content_x1 - content_x0);
+
+            let is_sounding = song_time >= note.start && song_time < note.start + note.duration;
+            let color = if is_sounding {
+                note_color
+            } else {
+                [DIM_NOTE_COLOR[0], DIM_NOTE_COLOR[1], DIM_NOTE_COLOR[2]]
+            };
+
+            notehead(ui, clef, pitch, x, color);
         }
     });
 }
