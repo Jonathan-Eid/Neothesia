@@ -11,7 +11,7 @@ use midly::Smf;
 
 pub use convert::PULSES_PER_QUARTER_NOTE;
 
-/// A note's written pitch, tagged with where to find it in the eventual
+/// A note exactly as written, tagged with where to find it in the eventual
 /// `Smf`: which track (without the leading tempo track), what pulse it
 /// starts on, and its midi key - the same three coordinates a note built
 /// from `smf` can be matched against.
@@ -20,7 +20,7 @@ pub struct NotationEntry {
     pub track: usize,
     pub start: u64,
     pub key: u8,
-    pub pitch: crate::NotationPitch,
+    pub notation: crate::NotationInfo,
 }
 
 /// Result of a MusicXML conversion.

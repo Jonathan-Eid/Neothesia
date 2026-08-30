@@ -57,11 +57,11 @@ impl MidiFile {
         // Written pitch (step/alter/octave) has no home in a midi event, so
         // it travels as a side table keyed by the same coordinates the note
         // was built from, and gets matched back onto it here.
-        let mut notation: HashMap<(usize, std::time::Duration, u8), crate::NotationPitch> =
+        let mut notation: HashMap<(usize, std::time::Duration, u8), crate::NotationInfo> =
             HashMap::with_capacity(score.notation.len());
         for entry in &score.notation {
             let start = file.tempo_track.pulses_to_duration(entry.start);
-            notation.insert((entry.track, start, entry.key), entry.pitch);
+            notation.insert((entry.track, start, entry.key), entry.notation);
         }
 
         // Name and clef the tracks after the part and staff they came from,

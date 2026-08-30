@@ -1,7 +1,7 @@
 use midly::{MetaMessage, MidiMessage, TrackEvent, TrackEventKind, num::u4};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use crate::{Clef, NotationPitch, tempo_track::TempoTrack};
+use crate::{Clef, NotationInfo, tempo_track::TempoTrack};
 
 #[derive(Debug, Clone)]
 pub struct MidiEvent {
@@ -33,7 +33,7 @@ pub struct MidiNote {
     /// The pitch as written in the score, when this note came from a
     /// MusicXML file. `None` for a plain midi file, or a musicxml note this
     /// couldn't be matched back to (should not happen in practice).
-    pub notation: Option<NotationPitch>,
+    pub notation: Option<NotationInfo>,
 }
 
 #[derive(Debug, Clone)]

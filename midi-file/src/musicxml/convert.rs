@@ -173,7 +173,7 @@ pub fn convert(doc: &roxmltree::Document) -> Result<ConvertedScore, String> {
                     track,
                     start: note.start,
                     key: note.key,
-                    pitch: note.notation?,
+                    notation: note.notation?,
                 })
             })
         })
@@ -236,7 +236,7 @@ struct NoteRec {
     key: u8,
     channel: u8,
     velocity: u8,
-    notation: Option<crate::NotationPitch>,
+    notation: Option<crate::NotationInfo>,
 }
 
 #[derive(Default)]
@@ -372,11 +372,19 @@ impl Renderer {
                         && let Some(Pitch {
                             key,
                             instrument,
-                            notation,
+                            spelling,
                         }) = note_pitch(node, part, transpose)
                         && let Some(track) = part.track_of(staff)
                     {
                         let voice = text(node, "voice").unwrap_or("1");
+                        let notation = spelling.map(|(step, alter, octave)| crate::NotationInfo {
+                            step,
+                            alter,
+                            octave,
+                            value: note_value(node),
+                            dots: note_dots(node),
+                            beam: note_beam(node),
+                        });
 
                         let mut len = len.max(0) as u64;
                         let mut start = (base as i64 + start).max(0) as u64;
@@ -1028,13 +1036,15 @@ fn unroll_repeats(repeats: &[RepeatMeta], measure_count: usize) -> Vec<usize> {
     out
 }
 
-/// A resolved note pitch: the midi key actually sounded, plus (when this is
-/// a real, non-percussion pitch, and a transpose didn't just invalidate it)
-/// the spelling as written in the score.
+/// A resolved note pitch: the midi key actually sounded, plus (for a real,
+/// pitched note) its spelling exactly as written - `<pitch>` already gives
+/// the written step/alter/octave regardless of a transposing instrument;
+/// `transpose` below only adjusts the midi key that actually sounds.
 struct Pitch {
     key: u8,
     instrument: Instrument,
-    notation: Option<crate::NotationPitch>,
+    /// (step, alter, octave)
+    spelling: Option<(char, i8, i32)>,
 }
 
 fn note_pitch(node: Node, part: &Part, transpose: i32) -> Option<Pitch> {
@@ -1051,20 +1061,16 @@ fn note_pitch(node: Node, part: &Part, transpose: i32) -> Option<Pitch> {
 
         let key = (octave + 1) * 12 + step + alter + transpose;
 
-        // A transposing instrument's written pitch isn't what's actually
-        // heard, and re-deriving a "written" spelling for the sounding key
-        // isn't worth the complexity - only untransposed parts keep their
-        // notation.
-        let notation = (transpose == 0).then(|| crate::NotationPitch {
-            step: step_name.chars().next().unwrap_or('C'),
-            alter: alter.clamp(i8::MIN as i32, i8::MAX as i32) as i8,
+        let spelling = Some((
+            step_name.chars().next().unwrap_or('C'),
+            alter.clamp(i8::MIN as i32, i8::MAX as i32) as i8,
             octave,
-        });
+        ));
 
         Some(Pitch {
             key: key.clamp(0, 127) as u8,
             instrument,
-            notation,
+            spelling,
         })
     } else if let Some(unpitched) = child(node, "unpitched") {
         // Percussion, the written position is only a display hint, the sound
@@ -1082,11 +1088,48 @@ fn note_pitch(node: Node, part: &Part, transpose: i32) -> Option<Pitch> {
         Some(Pitch {
             key: key.clamp(0, 127) as u8,
             instrument,
-            notation: None,
+            spelling: None,
         })
     } else {
         None
     }
+}
+
+/// The note's `<type>` element - the shape it would be engraved with,
+/// independent of augmentation dots.
+fn note_value(node: Node) -> Option<crate::NoteValue> {
+    Some(match text(node, "type")? {
+        "whole" => crate::NoteValue::Whole,
+        "half" => crate::NoteValue::Half,
+        "quarter" => crate::NoteValue::Quarter,
+        "eighth" => crate::NoteValue::Eighth,
+        "16th" => crate::NoteValue::Sixteenth,
+        "32nd" => crate::NoteValue::ThirtySecond,
+        "64th" => crate::NoteValue::SixtyFourth,
+        _ => return None,
+    })
+}
+
+fn note_dots(node: Node) -> u8 {
+    node.children()
+        .filter(|n| n.has_tag_name("dot"))
+        .count()
+        .min(u8::MAX as usize) as u8
+}
+
+/// State of the primary (`number="1"`) beam, the one every beamed note has -
+/// secondary beams for 16th notes and shorter share the same begin/continue/
+/// end shape, so only the first level needs reading to know the grouping.
+fn note_beam(node: Node) -> Option<crate::BeamState> {
+    let beam = node
+        .children()
+        .find(|n| n.has_tag_name("beam") && n.attribute("number").unwrap_or("1") == "1")?;
+
+    Some(match beam.text()?.trim() {
+        "begin" => crate::BeamState::Begin,
+        "end" => crate::BeamState::End,
+        _ => crate::BeamState::Continue,
+    })
 }
 
 fn tie_flags(node: Node) -> (bool, bool) {

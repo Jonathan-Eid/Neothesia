@@ -1,13 +1,16 @@
-//! A one-bar-at-a-time staff notation view, built from the pitch spelling
+//! A one-bar-at-a-time staff notation view, built from the notation data
 //! MusicXML files keep and plain midi files don't - see
-//! [`midi_file::NotationPitch`].
+//! [`midi_file::NotationInfo`].
 //!
 //! Unlike the waterfall, this doesn't scroll: the whole current measure is
 //! laid out at once, a beat column lights up as the song reaches it, and the
 //! view jumps to the next measure only once the current one is done - meant
 //! to be readable at a glance, not tracked continuously.
 
-use midi_file::{Clef, MidiFile, MidiTrack, NotationPitch, tempo_track::TempoTrack};
+use midi_file::{
+    BeamState, Clef, MidiFile, MidiNote, MidiTrack, NotationInfo, NoteValue,
+    tempo_track::TempoTrack,
+};
 use nuon::Ui;
 use std::time::Duration;
 
@@ -234,8 +237,10 @@ fn staff(
                 .build(ui);
         }
 
+        let mut stems: Vec<StemInfo> = Vec::new();
+
         for note in track.notes.iter() {
-            let Some(pitch) = note.notation else {
+            let Some(info) = note.notation else {
                 continue;
             };
 
@@ -253,25 +258,221 @@ fn staff(
                 [DIM_NOTE_COLOR[0], DIM_NOTE_COLOR[1], DIM_NOTE_COLOR[2]]
             };
 
-            let start_pulses = tempo_track.duration_to_pulses(note.start);
-            let end_pulses = tempo_track.duration_to_pulses(note.start + note.duration);
-            let quarters = (end_pulses.saturating_sub(start_pulses)) as f32 / ppq.max(1.0);
-            let shape = classify_duration(quarters);
+            let shape = shape_for(&info, tempo_track, ppq, note);
+            let bottom = clef_bottom_line(clef);
+            let steps_above_bottom = diatonic_number(info.step, info.octave) - bottom;
+            let y = STAFF_LINE_GAP * 4.0 - steps_above_bottom as f32 * STEP;
 
-            note_glyph(ui, clef, pitch, shape, x, color);
+            note_head(ui, info, shape, steps_above_bottom, x, y, color);
+
+            if shape.stem {
+                stems.push(StemInfo {
+                    x,
+                    y,
+                    stem_down: steps_above_bottom >= 4,
+                    flags: shape.flags,
+                    beam: info.beam,
+                    color,
+                });
+            }
         }
+
+        draw_stems_and_beams(ui, &stems);
     });
 }
 
+/// A note whose stem (and possibly beam) is drawn in a second pass, once
+/// every note in the bar is known - a beam has to connect several noteheads,
+/// so it can't be drawn note-by-note the way the notehead itself can.
+struct StemInfo {
+    x: f32,
+    y: f32,
+    stem_down: bool,
+    flags: u8,
+    beam: Option<BeamState>,
+    color: [u8; 3],
+}
+
+/// Walks a bar's notes in order, grouping consecutive `Begin..End` runs into
+/// a shared beam and falling back to individual flags for anything left
+/// over (a lone note, or a beam left dangling by a malformed score).
+fn draw_stems_and_beams(ui: &mut Ui, stems: &[StemInfo]) {
+    let mut group: Vec<&StemInfo> = Vec::new();
+
+    for item in stems {
+        match item.beam {
+            Some(BeamState::Begin) => {
+                flush_group(ui, &mut group);
+                group.push(item);
+            }
+            Some(BeamState::Continue) => group.push(item),
+            Some(BeamState::End) => {
+                group.push(item);
+                flush_group(ui, &mut group);
+            }
+            None => {
+                flush_group(ui, &mut group);
+                draw_stem(ui, item, None);
+            }
+        }
+    }
+    flush_group(ui, &mut group);
+}
+
+fn flush_group(ui: &mut Ui, group: &mut Vec<&StemInfo>) {
+    if group.len() >= 2 {
+        draw_beamed_group(ui, group);
+    } else {
+        for item in group.iter() {
+            draw_stem(ui, item, None);
+        }
+    }
+    group.clear();
+}
+
+const STEM_LEN: f32 = STAFF_LINE_GAP * 3.5;
+
+fn stem_x(item: &StemInfo) -> f32 {
+    if item.stem_down {
+        item.x - 6.0
+    } else {
+        item.x + 5.5
+    }
+}
+
+/// A lone note's stem, with its own flags if it has any. `beam_y`, when
+/// given, is where a shared beam this note belongs to sits - the stem
+/// reaches that instead of using its own fixed length.
+fn draw_stem(ui: &mut Ui, item: &StemInfo, beam_y: Option<f32>) {
+    let (top, height) = match beam_y {
+        Some(beam_y) if item.stem_down => (item.y, beam_y - item.y),
+        Some(beam_y) => (beam_y, item.y - beam_y),
+        None if item.stem_down => (item.y, STEM_LEN),
+        None => (item.y - STEM_LEN, STEM_LEN),
+    };
+    let x = stem_x(item);
+
+    nuon::quad()
+        .x(x)
+        .y(top)
+        .width(1.4)
+        .height(height.max(1.0))
+        .color(item.color)
+        .build(ui);
+
+    if beam_y.is_none() && item.flags > 0 {
+        let flag_glyph = match (item.flags, item.stem_down) {
+            (1, false) => sheet::flag_8th_up(),
+            (1, true) => sheet::flag_8th_down(),
+            (2, false) => sheet::flag_16th_up(),
+            (2, true) => sheet::flag_16th_down(),
+            (_, false) => sheet::flag_32nd_up(),
+            (_, true) => sheet::flag_32nd_down(),
+        };
+
+        let flag_y = if item.stem_down { top + height } else { top };
+        nuon::label()
+            .text(flag_glyph)
+            .font_family("Leland")
+            .font_size(STAFF_LINE_GAP * 3.2)
+            .x(x - 1.0)
+            .y(flag_y - STAFF_LINE_GAP * (if item.stem_down { 0.2 } else { 1.6 }))
+            .width(16.0)
+            .height(STAFF_LINE_GAP * 3.2)
+            .color(item.color)
+            .build(ui);
+    }
+}
+
+/// A run of beamed notes: one stem per note reaching a shared, flat beam
+/// line, plus extra beam segments between adjacent pairs for anything
+/// shorter than an eighth note - `min(a.flags, b.flags)` naturally produces
+/// the shorter "partial beam" look a mixed-value run (like an eighth
+/// followed by two sixteenths) is supposed to have.
+fn draw_beamed_group(ui: &mut Ui, group: &[&StemInfo]) {
+    let stem_down = group.iter().filter(|s| s.stem_down).count() * 2 >= group.len();
+
+    let beam_y = if stem_down {
+        group
+            .iter()
+            .map(|s| s.y + STEM_LEN)
+            .fold(f32::MIN, f32::max)
+    } else {
+        group
+            .iter()
+            .map(|s| s.y - STEM_LEN)
+            .fold(f32::MAX, f32::min)
+    };
+
+    for item in group {
+        draw_stem(ui, item, Some(beam_y));
+    }
+
+    for pair in group.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let levels = a.flags.min(b.flags).max(1);
+        let (ax, bx) = (stem_x(a).min(stem_x(b)), stem_x(a).max(stem_x(b)));
+
+        for level in 0..levels {
+            let offset = level as f32 * 4.0;
+            let y = if stem_down {
+                beam_y - 3.0 - offset
+            } else {
+                beam_y + offset
+            };
+
+            nuon::quad()
+                .x(ax)
+                .y(y)
+                .width((bx - ax).max(1.0))
+                .height(3.0)
+                .color(a.color)
+                .build(ui);
+        }
+    }
+}
+
 /// How a note is drawn: notehead shape, whether it gets a stem, how many
-/// flags (unbeamed - grouping flagged notes under a beam isn't implemented),
-/// and how many augmentation dots.
+/// flags a lone copy of it would carry (a beamed note draws beam segments
+/// instead - see [`draw_beamed_group`]), and how many augmentation dots.
 #[derive(Clone, Copy)]
 struct DurationShape {
     notehead: &'static str,
     stem: bool,
     flags: u8,
     dots: u8,
+}
+
+/// The shape a note is drawn with - straight from the score's `<type>`/
+/// `<dot>` when it has one, since that's the actual engraved answer, not a
+/// guess. Falls back to inferring one from the note's real sounding length
+/// only for notation lacking an explicit `<type>` (rare, but legal
+/// MusicXML).
+fn shape_for(
+    info: &NotationInfo,
+    tempo_track: &TempoTrack,
+    ppq: f32,
+    note: &MidiNote,
+) -> DurationShape {
+    let Some(value) = info.value else {
+        let start_pulses = tempo_track.duration_to_pulses(note.start);
+        let end_pulses = tempo_track.duration_to_pulses(note.start + note.duration);
+        let quarters = (end_pulses.saturating_sub(start_pulses)) as f32 / ppq.max(1.0);
+        return classify_duration(quarters);
+    };
+
+    let notehead = match value {
+        NoteValue::Whole => sheet::notehead_whole(),
+        NoteValue::Half => sheet::notehead_half(),
+        _ => sheet::notehead_black(),
+    };
+
+    DurationShape {
+        notehead,
+        stem: value != NoteValue::Whole,
+        flags: value.flags(),
+        dots: info.dots,
+    }
 }
 
 /// Classifies a note's length, in quarter notes, into the shape it would be
@@ -387,18 +588,19 @@ fn key_signature(ui: &mut Ui, clef: Clef, fifths: i8, x: f32) {
     }
 }
 
-fn note_glyph(
+/// Notehead, accidental, ledger lines and augmentation dots - everything
+/// about a note that doesn't depend on its neighbors. The stem (and, for a
+/// beamed note, the beam itself) is drawn separately once every note in the
+/// bar is known - see [`draw_stems_and_beams`].
+fn note_head(
     ui: &mut Ui,
-    clef: Clef,
-    pitch: NotationPitch,
+    pitch: NotationInfo,
     shape: DurationShape,
+    steps_above_bottom: i32,
     x: f32,
+    y: f32,
     color: [u8; 3],
 ) {
-    let bottom = clef_bottom_line(clef);
-    let steps_above_bottom = diatonic_number(pitch.step, pitch.octave) - bottom;
-    let y = STAFF_LINE_GAP * 4.0 - steps_above_bottom as f32 * STEP;
-
     // Ledger lines for anything poking out above or below the staff.
     if steps_above_bottom < 0 {
         let mut step = -2;
@@ -449,53 +651,6 @@ fn note_glyph(
             .height(STAFF_LINE_GAP * 3.0)
             .color(color)
             .build(ui);
-    }
-
-    // Middle line and above points its stem down (on the left); below the
-    // middle line points up (on the right) - the standard convention.
-    let stem_down = steps_above_bottom >= 4;
-
-    if shape.stem {
-        let stem_len = STAFF_LINE_GAP * 3.5;
-        let stem_x = if stem_down { x - 6.0 } else { x + 5.5 };
-        let (stem_y, stem_h) = if stem_down {
-            (y, stem_len)
-        } else {
-            (y - stem_len, stem_len)
-        };
-
-        nuon::quad()
-            .x(stem_x)
-            .y(stem_y)
-            .width(1.4)
-            .height(stem_h)
-            .color(color)
-            .build(ui);
-
-        if shape.flags > 0 {
-            let flag_glyph = |flags: u8| -> &'static str {
-                match (flags, stem_down) {
-                    (1, false) => sheet::flag_8th_up(),
-                    (1, true) => sheet::flag_8th_down(),
-                    (2, false) => sheet::flag_16th_up(),
-                    (2, true) => sheet::flag_16th_down(),
-                    (_, false) => sheet::flag_32nd_up(),
-                    (_, true) => sheet::flag_32nd_down(),
-                }
-            };
-
-            let flag_y = if stem_down { stem_y + stem_h } else { stem_y };
-            nuon::label()
-                .text(flag_glyph(shape.flags))
-                .font_family("Leland")
-                .font_size(STAFF_LINE_GAP * 3.2)
-                .x(stem_x - 1.0)
-                .y(flag_y - STAFF_LINE_GAP * (if stem_down { 0.2 } else { 1.6 }))
-                .width(16.0)
-                .height(STAFF_LINE_GAP * 3.2)
-                .color(color)
-                .build(ui);
-        }
     }
 
     for dot in 0..shape.dots {

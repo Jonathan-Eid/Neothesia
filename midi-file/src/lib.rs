@@ -22,18 +22,62 @@ pub enum Clef {
     Percussion,
 }
 
-/// A note's pitch exactly as written in the score: the staff step it sits
-/// on (`step`/`octave`) plus the accidental actually printed (`alter`), kept
-/// separately from the flattened midi key number so that, e.g., a written
-/// C#4 is never confused with its enharmonic twin Db4 - same key, different
-/// line on the staff.
+/// A note's written note value (`<type>` in MusicXML) - what shape it would
+/// be engraved with, independent of how many augmentation dots lengthen it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NotationPitch {
+pub enum NoteValue {
+    Whole,
+    Half,
+    Quarter,
+    Eighth,
+    Sixteenth,
+    ThirtySecond,
+    SixtyFourth,
+}
+
+impl NoteValue {
+    /// How many flags a lone (unbeamed) note of this value gets.
+    pub fn flags(self) -> u8 {
+        match self {
+            NoteValue::Whole | NoteValue::Half | NoteValue::Quarter => 0,
+            NoteValue::Eighth => 1,
+            NoteValue::Sixteenth => 2,
+            NoteValue::ThirtySecond => 3,
+            NoteValue::SixtyFourth => 4,
+        }
+    }
+}
+
+/// Where a note sits in a beamed group (`<beam number="1">` in MusicXML).
+/// `forward hook`/`backward hook` both collapse into `Continue` - a
+/// dedicated renderer would draw them as a stub instead of a full beam
+/// segment, but a plain sheet view can treat them the same.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BeamState {
+    Begin,
+    Continue,
+    End,
+}
+
+/// A note exactly as written in the score, kept separately from the
+/// flattened midi key/timing so that, e.g., a written C#4 is never confused
+/// with its enharmonic twin Db4 (same key, different line on the staff), and
+/// a quarter note tied into a half isn't drawn as one fabricated whole note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotationInfo {
     /// 'A'..='G'
     pub step: char,
     /// -2 (double flat) ..= 2 (double sharp)
     pub alter: i8,
     pub octave: i32,
+    /// `None` when the score didn't spell out a `<type>` for this note -
+    /// callers should fall back to inferring a shape from the actual
+    /// sounding duration.
+    pub value: Option<NoteValue>,
+    /// Number of `<dot/>` augmentation dots.
+    pub dots: u8,
+    /// `None` when this note isn't part of a beamed group.
+    pub beam: Option<BeamState>,
 }
 
 pub static INSTRUMENT_NAMES: [&str; 128] = [
@@ -288,14 +332,18 @@ mod tests {
 
         let upper = &midi.tracks[1].notes;
 
-        // The tied C5s merge into one note, but keep their written spelling.
+        // The tied C5s merge into one note, but keep their written spelling
+        // and note value of the segment that started the tie.
         let c5 = upper.iter().find(|n| n.note == 72).unwrap();
         assert_eq!(
             c5.notation,
-            Some(NotationPitch {
+            Some(NotationInfo {
                 step: 'C',
                 alter: 0,
-                octave: 5
+                octave: 5,
+                value: Some(NoteValue::Quarter),
+                dots: 0,
+                beam: None,
             })
         );
 
@@ -303,12 +351,38 @@ mod tests {
         let e_flat = upper.iter().find(|n| n.note == 75).unwrap();
         assert_eq!(
             e_flat.notation,
-            Some(NotationPitch {
+            Some(NotationInfo {
                 step: 'E',
                 alter: -1,
-                octave: 5
+                octave: 5,
+                value: Some(NoteValue::Half),
+                dots: 0,
+                beam: None,
             })
         );
+    }
+
+    /// The exact engraved shape - note value, dots, beam grouping - comes
+    /// straight from the score's `<type>`/`<dot>`/`<beam>` elements, not a
+    /// guess from how long the note actually plays.
+    #[test]
+    fn musicxml_rhythm_preserved() {
+        let midi = MidiFile::new("./test-assets/test-beams.musicxml").unwrap();
+        let notes = &midi.tracks[1].notes;
+
+        let c5 = notes.iter().find(|n| n.note == 72).unwrap();
+        assert_eq!(c5.notation.unwrap().value, Some(NoteValue::Eighth));
+        assert_eq!(c5.notation.unwrap().beam, Some(BeamState::Begin));
+
+        let d5 = notes.iter().find(|n| n.note == 74).unwrap();
+        assert_eq!(d5.notation.unwrap().value, Some(NoteValue::Eighth));
+        assert_eq!(d5.notation.unwrap().beam, Some(BeamState::End));
+
+        // Dotted quarter: three eighth-note-divisions long.
+        let e5 = notes.iter().find(|n| n.note == 76).unwrap();
+        assert_eq!(e5.notation.unwrap().value, Some(NoteValue::Quarter));
+        assert_eq!(e5.notation.unwrap().dots, 1);
+        assert_eq!(e5.notation.unwrap().beam, None);
     }
 
     #[test]
