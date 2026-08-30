@@ -3,7 +3,7 @@ use crate::{
     tempo_track::TempoTrack,
 };
 use midly::{Format, Smf, Timing};
-use std::{fs, path::Path, sync::Arc};
+use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
 #[derive(Debug, Clone)]
 pub struct MidiFile {
@@ -54,11 +54,35 @@ impl MidiFile {
 
         let mut file = Self::from_parsed_smf(name.into(), &score.smf)?;
 
-        // Name the tracks after the part and the staff they came from, so a
-        // vocal line can be told apart from the piano in the track picker.
+        // Written pitch (step/alter/octave) has no home in a midi event, so
+        // it travels as a side table keyed by the same coordinates the note
+        // was built from, and gets matched back onto it here.
+        let mut notation: HashMap<(usize, std::time::Duration, u8), crate::NotationPitch> =
+            HashMap::with_capacity(score.notation.len());
+        for entry in &score.notation {
+            let start = file.tempo_track.pulses_to_duration(entry.start);
+            notation.insert((entry.track, start, entry.key), entry.pitch);
+        }
+
+        // Name and clef the tracks after the part and staff they came from,
+        // so a vocal line can be told apart from the piano in the track
+        // picker, and the sheet view knows which staff to draw them on.
         if let Some(tracks) = Arc::get_mut(&mut file.tracks) {
-            for (track, name) in tracks.iter_mut().skip(1).zip(score.track_names) {
+            for (track, (name, clef)) in tracks
+                .iter_mut()
+                .skip(1)
+                .zip(score.track_names.into_iter().zip(score.track_clefs))
+            {
                 track.name = name;
+                track.clef = clef;
+
+                if let Some(notes) = Arc::get_mut(&mut track.notes) {
+                    for note in notes.iter_mut() {
+                        note.notation = notation
+                            .get(&(track.track_id - 1, note.start, note.note))
+                            .copied();
+                    }
+                }
             }
         }
 

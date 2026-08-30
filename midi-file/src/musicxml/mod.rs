@@ -11,6 +11,18 @@ use midly::Smf;
 
 pub use convert::PULSES_PER_QUARTER_NOTE;
 
+/// A note's written pitch, tagged with where to find it in the eventual
+/// `Smf`: which track (without the leading tempo track), what pulse it
+/// starts on, and its midi key - the same three coordinates a note built
+/// from `smf` can be matched against.
+#[derive(Debug, Clone, Copy)]
+pub struct NotationEntry {
+    pub track: usize,
+    pub start: u64,
+    pub key: u8,
+    pub pitch: crate::NotationPitch,
+}
+
 /// Result of a MusicXML conversion.
 pub struct ConvertedScore {
     pub smf: Smf<'static>,
@@ -19,6 +31,10 @@ pub struct ConvertedScore {
     /// Name of every track, in the order they appear in `smf`, without the
     /// leading tempo track.
     pub track_names: Vec<Option<String>>,
+    /// Clef of every track, same order as `track_names`.
+    pub track_clefs: Vec<Option<crate::Clef>>,
+    /// Written pitch of every note that has one (percussion doesn't).
+    pub notation: Vec<NotationEntry>,
 }
 
 /// Cheap sniffing, so that we don't have to rely on the file extension.

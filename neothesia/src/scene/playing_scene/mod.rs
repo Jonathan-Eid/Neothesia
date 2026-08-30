@@ -21,6 +21,8 @@ use analysis::{Hand, Snapshot, SongAnalysis};
 
 mod theory_panel;
 
+mod sheet_music;
+
 mod keyboard;
 pub use keyboard::Keyboard;
 
@@ -348,6 +350,23 @@ impl Scene for PlayingScene {
             self.player.play_along().required_notes()
         };
 
+        let mut overlay_bottom = self.keyboard.pos().y;
+
+        if ctx.config.sheet_music() && sheet_music::is_available(self.player.song()) {
+            let song_time = self.song_time();
+            let height = sheet_music::height(self.player.song());
+            let y = overlay_bottom - height - 12.0;
+            sheet_music::build(
+                &mut self.nuon,
+                ctx,
+                self.player.song(),
+                song_time,
+                ctx.window_state.logical_size.width,
+                y,
+            );
+            overlay_bottom = y;
+        }
+
         if let Some(snapshot) = self.snapshot.as_ref() {
             if ctx.config.theory_panel() {
                 theory_panel::build(
@@ -358,13 +377,13 @@ impl Scene for PlayingScene {
                     &waiting_for,
                     snapshot.key.prefers_flats(),
                     ctx.window_state.logical_size.width,
-                    self.keyboard.pos().y - theory_panel::HEIGHT - 12.0,
+                    overlay_bottom - theory_panel::HEIGHT - 12.0,
                 );
             } else if ctx.config.chord_identifier() {
                 nuon::label()
                     .text(snapshot.symbol())
                     .font_size(25.0)
-                    .y(self.keyboard.pos().y - 35.0)
+                    .y(overlay_bottom - 35.0)
                     .height(25.0)
                     .width(ctx.window_state.logical_size.width)
                     .build(&mut self.nuon);

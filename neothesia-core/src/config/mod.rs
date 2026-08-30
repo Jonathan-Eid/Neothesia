@@ -172,6 +172,14 @@ impl Config {
         self.appearance.theory_panel = theory_panel;
     }
 
+    pub fn sheet_music(&self) -> bool {
+        self.appearance.sheet_music
+    }
+
+    pub fn set_sheet_music(&mut self, sheet_music: bool) {
+        self.appearance.sheet_music = sheet_music;
+    }
+
     pub fn hide_muted_tracks(&self) -> bool {
         self.appearance.hide_muted_tracks
     }

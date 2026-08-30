@@ -12,6 +12,30 @@ pub use playback::*;
 pub use signature_track::{KeySignature, SignatureTrack, TimeSignature};
 pub use track::*;
 
+/// Which staff a track is written on, as declared by the MusicXML score.
+/// `None` for a plain midi file, which carries no such information.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Clef {
+    Treble,
+    Bass,
+    Alto,
+    Percussion,
+}
+
+/// A note's pitch exactly as written in the score: the staff step it sits
+/// on (`step`/`octave`) plus the accidental actually printed (`alter`), kept
+/// separately from the flattened midi key number so that, e.g., a written
+/// C#4 is never confused with its enharmonic twin Db4 - same key, different
+/// line on the staff.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotationPitch {
+    /// 'A'..='G'
+    pub step: char,
+    /// -2 (double flat) ..= 2 (double sharp)
+    pub alter: i8,
+    pub octave: i32,
+}
+
 pub static INSTRUMENT_NAMES: [&str; 128] = [
     "Acoustic Grand Piano",
     "Bright Acoustic Piano",
@@ -251,6 +275,40 @@ mod tests {
             .signature_track
             .time_signature_at(&std::time::Duration::ZERO);
         assert_eq!((time.numerator, time.denominator), (1, 4));
+    }
+
+    /// Written pitch spelling and clef survive the conversion, even though
+    /// the midi events underneath only carry a flattened key number.
+    #[test]
+    fn musicxml_notation_preserved() {
+        let midi = MidiFile::new("./test-assets/test.musicxml").unwrap();
+
+        assert_eq!(midi.tracks[1].clef, Some(Clef::Treble));
+        assert_eq!(midi.tracks[2].clef, Some(Clef::Bass));
+
+        let upper = &midi.tracks[1].notes;
+
+        // The tied C5s merge into one note, but keep their written spelling.
+        let c5 = upper.iter().find(|n| n.note == 72).unwrap();
+        assert_eq!(
+            c5.notation,
+            Some(NotationPitch {
+                step: 'C',
+                alter: 0,
+                octave: 5
+            })
+        );
+
+        // Written as an E-flat, not its enharmonic twin D-sharp.
+        let e_flat = upper.iter().find(|n| n.note == 75).unwrap();
+        assert_eq!(
+            e_flat.notation,
+            Some(NotationPitch {
+                step: 'E',
+                alter: -1,
+                octave: 5
+            })
+        );
     }
 
     #[test]

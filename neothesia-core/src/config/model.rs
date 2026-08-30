@@ -183,6 +183,9 @@ pub struct AppearanceConfigV1 {
 
     #[serde(default = "default_hide_muted_tracks")]
     pub hide_muted_tracks: bool,
+
+    #[serde(default)]
+    pub sheet_music: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -201,6 +204,7 @@ impl Default for AppearanceConfig {
             chord_identifier: false,
             theory_panel: default_theory_panel(),
             hide_muted_tracks: default_hide_muted_tracks(),
+            sheet_music: false,
         })
     }
 }

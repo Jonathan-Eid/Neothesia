@@ -47,6 +47,7 @@ pub fn convert(doc: &roxmltree::Document) -> Result<ConvertedScore, String> {
     let instruments = collect_instruments(root);
     let part_names = collect_part_names(root);
     let mut track_names: Vec<Option<String>> = Vec::new();
+    let mut track_clefs: Vec<Option<crate::Clef>> = Vec::new();
 
     // Every staff gets a track of its own, the tempo map is prepended later on.
     let mut track_count = 0;
@@ -78,20 +79,26 @@ pub fn convert(doc: &roxmltree::Document) -> Result<ConvertedScore, String> {
             staff_tracks.insert(staff, track_count);
             track_count += 1;
 
+            let clef_label =
+                clefs
+                    .get(&staff)
+                    .copied()
+                    .unwrap_or(if staff == 1 { "treble" } else { "bass" });
+
             let name = match (&part_name, staves > 1) {
-                (Some(part), true) => {
-                    let clef = clefs.get(&staff).copied().unwrap_or(if staff == 1 {
-                        "treble"
-                    } else {
-                        "bass"
-                    });
-                    Some(format!("{part} · {clef}"))
-                }
+                (Some(part), true) => Some(format!("{part} · {clef_label}")),
                 (Some(part), false) => Some(part.clone()),
                 (None, _) => None,
             };
 
             track_names.push(name);
+            track_clefs.push(match clef_label {
+                "treble" => Some(crate::Clef::Treble),
+                "bass" => Some(crate::Clef::Bass),
+                "alto" => Some(crate::Clef::Alto),
+                "percussion" => Some(crate::Clef::Percussion),
+                _ => None,
+            });
         }
 
         parts.push(Part {
@@ -152,10 +159,32 @@ pub fn convert(doc: &roxmltree::Document) -> Result<ConvertedScore, String> {
         renderer.render_part(part, &order, &starts);
     }
 
+    // Pulled out before `build_smf` consumes the tracks: this is the written
+    // spelling data a plain `Smf` has no room for, kept as a side table the
+    // rest of the crate can match back onto its midi notes by (track,
+    // start, key).
+    let notation = renderer
+        .tracks
+        .iter()
+        .enumerate()
+        .flat_map(|(track, buf)| {
+            buf.notes.iter().filter_map(move |note| {
+                Some(super::NotationEntry {
+                    track,
+                    start: note.start,
+                    key: note.key,
+                    pitch: note.notation?,
+                })
+            })
+        })
+        .collect();
+
     Ok(ConvertedScore {
         smf: renderer.build_smf(),
         measures: starts,
         track_names,
+        track_clefs,
+        notation,
     })
 }
 
@@ -207,6 +236,7 @@ struct NoteRec {
     key: u8,
     channel: u8,
     velocity: u8,
+    notation: Option<crate::NotationPitch>,
 }
 
 #[derive(Default)]
@@ -339,7 +369,11 @@ impl Renderer {
 
                     if !is_rest
                         && !is_cue
-                        && let Some((key, instrument)) = note_pitch(node, part, transpose)
+                        && let Some(Pitch {
+                            key,
+                            instrument,
+                            notation,
+                        }) = note_pitch(node, part, transpose)
                         && let Some(track) = part.track_of(staff)
                     {
                         let voice = text(node, "voice").unwrap_or("1");
@@ -383,6 +417,7 @@ impl Renderer {
                                     key,
                                     channel: instrument.channel,
                                     velocity,
+                                    notation,
                                 });
 
                                 (track, self.tracks[track].notes.len() - 1)
@@ -993,20 +1028,44 @@ fn unroll_repeats(repeats: &[RepeatMeta], measure_count: usize) -> Vec<usize> {
     out
 }
 
-fn note_pitch(node: Node, part: &Part, transpose: i32) -> Option<(u8, Instrument)> {
+/// A resolved note pitch: the midi key actually sounded, plus (when this is
+/// a real, non-percussion pitch, and a transpose didn't just invalidate it)
+/// the spelling as written in the score.
+struct Pitch {
+    key: u8,
+    instrument: Instrument,
+    notation: Option<crate::NotationPitch>,
+}
+
+fn note_pitch(node: Node, part: &Part, transpose: i32) -> Option<Pitch> {
     let instrument = child(node, "instrument")
         .and_then(|i| i.attribute("id"))
         .and_then(|id| part.instruments.get(id).copied())
         .unwrap_or(part.default_instrument);
 
     if let Some(pitch) = child(node, "pitch") {
-        let step = step_semitones(text(pitch, "step")?)?;
+        let step_name = text(pitch, "step")?;
+        let step = step_semitones(step_name)?;
         let octave = num::<i32>(pitch, "octave")?;
         let alter = num::<f32>(pitch, "alter").unwrap_or(0.0).round() as i32;
 
         let key = (octave + 1) * 12 + step + alter + transpose;
 
-        Some((key.clamp(0, 127) as u8, instrument))
+        // A transposing instrument's written pitch isn't what's actually
+        // heard, and re-deriving a "written" spelling for the sounding key
+        // isn't worth the complexity - only untransposed parts keep their
+        // notation.
+        let notation = (transpose == 0).then(|| crate::NotationPitch {
+            step: step_name.chars().next().unwrap_or('C'),
+            alter: alter.clamp(i8::MIN as i32, i8::MAX as i32) as i8,
+            octave,
+        });
+
+        Some(Pitch {
+            key: key.clamp(0, 127) as u8,
+            instrument,
+            notation,
+        })
     } else if let Some(unpitched) = child(node, "unpitched") {
         // Percussion, the written position is only a display hint, the sound
         // comes from the instrument definition.
@@ -1020,7 +1079,11 @@ fn note_pitch(node: Node, part: &Part, transpose: i32) -> Option<(u8, Instrument
             })
             .unwrap_or(38);
 
-        Some((key.clamp(0, 127) as u8, instrument))
+        Some(Pitch {
+            key: key.clamp(0, 127) as u8,
+            instrument,
+            notation: None,
+        })
     } else {
         None
     }
