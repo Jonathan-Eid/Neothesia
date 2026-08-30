@@ -97,4 +97,28 @@ pub mod sheet {
     pub fn notehead_black() -> &'static str {
         "\u{E0A4}"
     }
+
+    pub fn flag_8th_up() -> &'static str {
+        "\u{E240}"
+    }
+
+    pub fn flag_8th_down() -> &'static str {
+        "\u{E241}"
+    }
+
+    pub fn flag_16th_up() -> &'static str {
+        "\u{E242}"
+    }
+
+    pub fn flag_16th_down() -> &'static str {
+        "\u{E243}"
+    }
+
+    pub fn flag_32nd_up() -> &'static str {
+        "\u{E244}"
+    }
+
+    pub fn flag_32nd_down() -> &'static str {
+        "\u{E245}"
+    }
 }

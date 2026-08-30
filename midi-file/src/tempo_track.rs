@@ -65,6 +65,10 @@ impl TempoTrack {
         }
     }
 
+    pub fn pulses_per_quarter_note(&self) -> u16 {
+        self.pulses_per_quarter_note
+    }
+
     pub fn tempo_event_for_pulses(&self, pulses: u64) -> Option<&TempoEvent> {
         let res = self
             .events

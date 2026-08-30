@@ -7,7 +7,7 @@
 //! view jumps to the next measure only once the current one is done - meant
 //! to be readable at a glance, not tracked continuously.
 
-use midi_file::{Clef, MidiFile, MidiTrack, NotationPitch};
+use midi_file::{Clef, MidiFile, MidiTrack, NotationPitch, tempo_track::TempoTrack};
 use nuon::Ui;
 use std::time::Duration;
 
@@ -135,6 +135,7 @@ pub fn build(ui: &mut Ui, ctx: &Context, song: &Song, song_time: Duration, width
                 clef,
                 note_color,
                 key.map(|k| k.fifths).unwrap_or(0),
+                &song.file.tempo_track,
                 song_time,
                 measure_start,
                 measure_end,
@@ -156,6 +157,7 @@ fn staff(
     clef: Clef,
     note_color: [u8; 3],
     fifths: i8,
+    tempo_track: &TempoTrack,
     song_time: Duration,
     measure_start: Duration,
     measure_end: Duration,
@@ -166,6 +168,7 @@ fn staff(
     top_y: f32,
 ) {
     let bar_len = (measure_end - measure_start).as_secs_f32().max(0.001);
+    let ppq = tempo_track.pulses_per_quarter_note() as f32;
 
     nuon::translate().y(top_y).build(ui, |ui| {
         // The five lines, top to bottom.
@@ -220,6 +223,17 @@ fn staff(
 
         key_signature(ui, clef, fifths, PAD + CLEF_W);
 
+        // Barlines closing the bar on both ends, same as any real staff.
+        for x in [content_x0 - 6.0, content_x1] {
+            nuon::quad()
+                .x(x)
+                .y(0.0)
+                .width(1.4)
+                .height(STAFF_LINE_GAP * 4.0)
+                .color(LINE_COLOR)
+                .build(ui);
+        }
+
         for note in track.notes.iter() {
             let Some(pitch) = note.notation else {
                 continue;
@@ -239,9 +253,60 @@ fn staff(
                 [DIM_NOTE_COLOR[0], DIM_NOTE_COLOR[1], DIM_NOTE_COLOR[2]]
             };
 
-            notehead(ui, clef, pitch, x, color);
+            let start_pulses = tempo_track.duration_to_pulses(note.start);
+            let end_pulses = tempo_track.duration_to_pulses(note.start + note.duration);
+            let quarters = (end_pulses.saturating_sub(start_pulses)) as f32 / ppq.max(1.0);
+            let shape = classify_duration(quarters);
+
+            note_glyph(ui, clef, pitch, shape, x, color);
         }
     });
+}
+
+/// How a note is drawn: notehead shape, whether it gets a stem, how many
+/// flags (unbeamed - grouping flagged notes under a beam isn't implemented),
+/// and how many augmentation dots.
+#[derive(Clone, Copy)]
+struct DurationShape {
+    notehead: &'static str,
+    stem: bool,
+    flags: u8,
+    dots: u8,
+}
+
+/// Classifies a note's length, in quarter notes, into the shape it would be
+/// engraved with. Thresholds sit halfway between each standard duration (and
+/// its dotted variant) so real-world timing/quantization noise still lands
+/// on the right symbol.
+fn classify_duration(quarters: f32) -> DurationShape {
+    let (notehead, stem, flags, dots) = if quarters >= 3.5 {
+        (sheet::notehead_whole(), false, 0, 0)
+    } else if quarters >= 2.5 {
+        (sheet::notehead_half(), true, 0, 1)
+    } else if quarters >= 1.75 {
+        (sheet::notehead_half(), true, 0, 0)
+    } else if quarters >= 1.25 {
+        (sheet::notehead_black(), true, 0, 1)
+    } else if quarters >= 0.875 {
+        (sheet::notehead_black(), true, 0, 0)
+    } else if quarters >= 0.625 {
+        (sheet::notehead_black(), true, 1, 1)
+    } else if quarters >= 0.4375 {
+        (sheet::notehead_black(), true, 1, 0)
+    } else if quarters >= 0.3125 {
+        (sheet::notehead_black(), true, 2, 1)
+    } else if quarters >= 0.1875 {
+        (sheet::notehead_black(), true, 2, 0)
+    } else {
+        (sheet::notehead_black(), true, 3, 0)
+    };
+
+    DurationShape {
+        notehead,
+        stem,
+        flags,
+        dots,
+    }
 }
 
 /// Position, in diatonic steps, of `step`/`octave` from C0 - a single
@@ -322,7 +387,14 @@ fn key_signature(ui: &mut Ui, clef: Clef, fifths: i8, x: f32) {
     }
 }
 
-fn notehead(ui: &mut Ui, clef: Clef, pitch: NotationPitch, x: f32, color: [u8; 3]) {
+fn note_glyph(
+    ui: &mut Ui,
+    clef: Clef,
+    pitch: NotationPitch,
+    shape: DurationShape,
+    x: f32,
+    color: [u8; 3],
+) {
     let bottom = clef_bottom_line(clef);
     let steps_above_bottom = diatonic_number(pitch.step, pitch.octave) - bottom;
     let y = STAFF_LINE_GAP * 4.0 - steps_above_bottom as f32 * STEP;
@@ -379,8 +451,66 @@ fn notehead(ui: &mut Ui, clef: Clef, pitch: NotationPitch, x: f32, color: [u8; 3
             .build(ui);
     }
 
+    // Middle line and above points its stem down (on the left); below the
+    // middle line points up (on the right) - the standard convention.
+    let stem_down = steps_above_bottom >= 4;
+
+    if shape.stem {
+        let stem_len = STAFF_LINE_GAP * 3.5;
+        let stem_x = if stem_down { x - 6.0 } else { x + 5.5 };
+        let (stem_y, stem_h) = if stem_down {
+            (y, stem_len)
+        } else {
+            (y - stem_len, stem_len)
+        };
+
+        nuon::quad()
+            .x(stem_x)
+            .y(stem_y)
+            .width(1.4)
+            .height(stem_h)
+            .color(color)
+            .build(ui);
+
+        if shape.flags > 0 {
+            let flag_glyph = |flags: u8| -> &'static str {
+                match (flags, stem_down) {
+                    (1, false) => sheet::flag_8th_up(),
+                    (1, true) => sheet::flag_8th_down(),
+                    (2, false) => sheet::flag_16th_up(),
+                    (2, true) => sheet::flag_16th_down(),
+                    (_, false) => sheet::flag_32nd_up(),
+                    (_, true) => sheet::flag_32nd_down(),
+                }
+            };
+
+            let flag_y = if stem_down { stem_y + stem_h } else { stem_y };
+            nuon::label()
+                .text(flag_glyph(shape.flags))
+                .font_family("Leland")
+                .font_size(STAFF_LINE_GAP * 3.2)
+                .x(stem_x - 1.0)
+                .y(flag_y - STAFF_LINE_GAP * (if stem_down { 0.2 } else { 1.6 }))
+                .width(16.0)
+                .height(STAFF_LINE_GAP * 3.2)
+                .color(color)
+                .build(ui);
+        }
+    }
+
+    for dot in 0..shape.dots {
+        nuon::quad()
+            .x(x + 9.0 + dot as f32 * 5.0)
+            .y(y - STAFF_LINE_GAP * 0.15)
+            .width(3.0)
+            .height(3.0)
+            .border_radius([1.5; 4])
+            .color(color)
+            .build(ui);
+    }
+
     nuon::label()
-        .text(sheet::notehead_black())
+        .text(shape.notehead)
         .font_family("Leland")
         .font_size(STAFF_LINE_GAP * 2.6)
         .x(x - 6.0)
